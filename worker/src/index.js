@@ -128,6 +128,37 @@ function queryInstitutions(url) {
   return paginated(all.slice(offset, offset + limit), { limit, offset, total: all.length });
 }
 
+// Every bank in a country, SWIFT and NCHL combined into one shape, so a
+// client doesn't need to know which code system(s) a country has or call
+// two endpoints. Not deduplicated: an institution with both a SWIFT code
+// and an NCHL code (common for commercial banks) appears twice, once per
+// system, because we have no verified crosswalk between the two.
+function unifiedBanks(country) {
+  const swift = (byCountry.get(country) || []).map((r) => ({
+    name: r.bank,
+    countryCode: r.countryCode,
+    codeSystem: "SWIFT",
+    code: r.swiftCode,
+  }));
+  const nchl = (institutionsByCountry.get(country) || []).map((i) => ({
+    name: i.name,
+    countryCode: i.countryCode,
+    codeSystem: "NCHL",
+    code: i.institutionCode,
+  }));
+  return [...swift, ...nchl];
+}
+
+function queryCountryBanks(url, countryParam) {
+  const country = countryParam.trim().toUpperCase();
+  if (!countryByCode.has(country)) {
+    return fail("NOT_FOUND", `no country found for code "${country}"`, 404);
+  }
+  const all = unifiedBanks(country);
+  const { limit, offset } = parsePagination(url);
+  return paginated(all.slice(offset, offset + limit), { limit, offset, total: all.length });
+}
+
 // ---------- routing ----------
 // Everything lives under /v1. `parts` below always has "v1" stripped.
 
@@ -136,12 +167,13 @@ function routeV1(url, parts) {
     return ok({
       name: "swiftlookup",
       endpoints: [
+        "GET /v1/countries/:code/banks      -> every bank in a country, SWIFT + domestic combined",
         "GET /v1/codes/:code                -> single SWIFT/BIC code lookup",
-        "GET /v1/codes?country=&q=&limit=&offset= -> list/search SWIFT/BIC codes",
+        "GET /v1/codes?country=&q=&limit=&offset= -> list/search SWIFT/BIC codes only",
+        "GET /v1/institutions/:code         -> single domestic institution lookup (NCHL, Nepal only)",
+        "GET /v1/institutions?country=&limit=&offset= -> list domestic institutions only",
         "GET /v1/countries                  -> all countries",
         "GET /v1/countries/:code            -> single country info",
-        "GET /v1/institutions/:code         -> single domestic institution lookup (NCHL, Nepal only)",
-        "GET /v1/institutions?country=&limit=&offset= -> list domestic institutions for a country",
         "GET /v1/dump                       -> full SWIFT/BIC dataset, unpaginated",
         "GET /v1/meta                       -> dataset info",
       ],
@@ -167,6 +199,9 @@ function routeV1(url, parts) {
       const country = countryByCode.get(parts[1].trim().toUpperCase());
       if (!country) return fail("NOT_FOUND", `no country found for code "${parts[1]}"`, 404);
       return ok(country);
+    }
+    if (parts.length === 3 && parts[2] === "banks") {
+      return queryCountryBanks(url, parts[1]);
     }
   }
 

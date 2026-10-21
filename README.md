@@ -78,15 +78,25 @@ is a plain HTML landing page, not part of the API.
 | Method & path | Returns | Static equivalent |
 |---|---|---|
 | `GET /v1` | API info | — |
+| `GET /v1/countries/:code/banks` | **Every bank in a country**, SWIFT + NCHL combined, paginated | `/v1/countries/<CC>/banks.json` |
 | `GET /v1/codes/:code` | `{ data: { swiftCode, bankCode, countryCode, country, bank } }` or 404 | `/v1/codes/<CODE>.json` |
-| `GET /v1/codes?country=&q=&limit=&offset=` | `{ data: [...], pagination }`. No params → first page of everything | — |
-| `GET /v1/countries` | `{ data: [{ code, name, bankCount }] }` | `/v1/countries.json` |
-| `GET /v1/countries/:code` | `{ data: { code, name, bankCount } }` or 404 | `/v1/countries/<CC>.json` |
-| — banks in a country | `{ data: [...], pagination }` | `/v1/countries/<CC>/codes.json` |
-| `GET /v1/dump` | `{ data: [...] }`, all 33,593 records, unpaginated | `/v1/dump.json` |
-| `GET /v1/meta` | `{ data: {...} }` | `/v1/meta.json` |
+| `GET /v1/codes?country=&q=&limit=&offset=` | SWIFT/BIC only. No params → first page of everything | — |
 | `GET /v1/institutions/:code` | Domestic institution lookup (NCHL, Nepal only) or 404 | `/v1/institutions/<CODE>.json` |
-| `GET /v1/institutions?country=&limit=&offset=` | `{ data: [...], pagination }`. `country` required | `/v1/countries/<CC>/institutions.json` |
+| `GET /v1/institutions?country=&limit=&offset=` | Domestic institutions only. `country` required | `/v1/countries/<CC>/institutions.json` |
+| `GET /v1/countries` | `{ data: [{ code, name, bankCount, hasInstitutionDirectory }] }` | `/v1/countries.json` |
+| `GET /v1/countries/:code` | Single country info, same shape | `/v1/countries/<CC>.json` |
+| `GET /v1/dump` | `{ data: [...] }`, all 33,593 SWIFT/BIC records, unpaginated | `/v1/dump.json` |
+| `GET /v1/meta` | `{ data: {...} }` | `/v1/meta.json` |
+
+`/v1/countries/:code/banks` is the one to use for "give me all the banks
+in country X" — it merges `/v1/codes?country=X` and
+`/v1/institutions?country=X` into one list, each entry shaped
+`{ name, countryCode, codeSystem, code }` where `codeSystem` is `"SWIFT"`
+or `"NCHL"`. **Not deduplicated**: a bank holding both a SWIFT code and an
+NCHL code (common for Nepal's commercial banks) appears once per system,
+since there's no verified crosswalk between the two identifier spaces.
+The two underlying endpoints stay available separately for consumers who
+only want one code system.
 
 Dynamic-only equivalent of the static country-codes file:
 `GET /v1/codes?country=NP&limit=200`.

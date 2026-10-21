@@ -42,18 +42,48 @@ for (const r of records) {
   if (!byCountry.has(r.countryCode)) byCountry.set(r.countryCode, []);
   byCountry.get(r.countryCode).push(r);
 }
+
+// Country-specific domestic institution directories (NCHL codes, not
+// SWIFT/BIC). Currently just Nepal.
+const institutionsByCountry = new Map([["NP", institutionsNp]]);
+
+const toUnified = (country) => [
+  ...(byCountry.get(country) || []).map((r) => ({
+    name: r.bank,
+    countryCode: r.countryCode,
+    codeSystem: "SWIFT",
+    code: r.swiftCode,
+  })),
+  ...(institutionsByCountry.get(country) || []).map((i) => ({
+    name: i.name,
+    countryCode: i.countryCode,
+    codeSystem: "NCHL",
+    code: i.institutionCode,
+  })),
+];
+
+const allCountryCodes = new Set([...byCountry.keys(), ...institutionsByCountry.keys()]);
 const countryList = [];
-for (const [code, banks] of byCountry) {
+for (const code of allCountryCodes) {
+  const banks = byCountry.get(code) || [];
+  const name = banks[0]?.country ?? code;
   const total = banks.length;
   fs.mkdirSync(path.join(v1, "countries", code), { recursive: true });
   writeJson(path.join(v1, "countries", `${code}.json`), {
-    data: { code, name: banks[0].country, bankCount: total },
+    data: { code, name, bankCount: total, hasInstitutionDirectory: institutionsByCountry.has(code) },
   });
-  writeJson(path.join(v1, "countries", code, "codes.json"), {
-    data: banks,
-    pagination: { total, limit: total, offset: 0, hasMore: false },
+  if (banks.length > 0) {
+    writeJson(path.join(v1, "countries", code, "codes.json"), {
+      data: banks,
+      pagination: { total, limit: total, offset: 0, hasMore: false },
+    });
+  }
+  const unified = toUnified(code);
+  writeJson(path.join(v1, "countries", code, "banks.json"), {
+    data: unified,
+    pagination: { total: unified.length, limit: unified.length, offset: 0, hasMore: false },
   });
-  countryList.push({ code, name: banks[0].country, bankCount: total });
+  countryList.push({ code, name, bankCount: total, hasInstitutionDirectory: institutionsByCountry.has(code) });
 }
 countryList.sort((a, b) => a.code.localeCompare(b.code));
 writeJson(path.join(v1, "countries.json"), { data: countryList });
@@ -61,7 +91,6 @@ writeJson(path.join(v1, "countries.json"), { data: countryList });
 for (const inst of institutionsNp) {
   writeJson(path.join(v1, "institutions", `${inst.institutionCode}.json`), { data: inst });
 }
-fs.mkdirSync(path.join(v1, "countries", "NP"), { recursive: true });
 writeJson(path.join(v1, "countries", "NP", "institutions.json"), {
   data: institutionsNp,
   pagination: { total: institutionsNp.length, limit: institutionsNp.length, offset: 0, hasMore: false },
@@ -86,11 +115,12 @@ fs.writeFileSync(
 <h1>swiftlookup</h1>
 <p>Static mirror. SWIFT/BIC code &rarr; bank name + country. ${records.length.toLocaleString()} records, ${countryList.length} countries. No query params &mdash; every path is a real file.</p>
 <table>
+<tr><td><code>GET /v1/countries/&lt;CC&gt;/banks.json</code></td><td><b>Every bank in a country</b>, e.g. <a href="v1/countries/NP/banks.json">v1/countries/NP/banks.json</a> &mdash; SWIFT + domestic combined</td></tr>
 <tr><td><code>GET /v1/codes/&lt;CODE&gt;.json</code></td><td>e.g. <a href="v1/codes/DEUTDE.json">v1/codes/DEUTDE.json</a></td></tr>
+<tr><td><code>GET /v1/countries/&lt;CC&gt;/codes.json</code></td><td>SWIFT codes only, e.g. <a href="v1/countries/NP/codes.json">v1/countries/NP/codes.json</a></td></tr>
 <tr><td><code>GET /v1/countries/&lt;CC&gt;.json</code></td><td>e.g. <a href="v1/countries/NP.json">v1/countries/NP.json</a></td></tr>
-<tr><td><code>GET /v1/countries/&lt;CC&gt;/codes.json</code></td><td>e.g. <a href="v1/countries/NP/codes.json">v1/countries/NP/codes.json</a></td></tr>
 <tr><td><code>GET /v1/countries.json</code></td><td>all ${countryList.length} countries</td></tr>
-<tr><td><code>GET /v1/dump.json</code></td><td>all ${records.length} records</td></tr>
+<tr><td><code>GET /v1/dump.json</code></td><td>all ${records.length} SWIFT/BIC records</td></tr>
 <tr><td><code>GET /v1/meta.json</code></td><td>dataset info</td></tr>
 </table>
 <p>Nepal only, separate from SWIFT &mdash; domestic NCHL institution codes (${institutionsNp.length} banks/finance companies, not microfinance):</p>
@@ -98,6 +128,9 @@ fs.writeFileSync(
 <tr><td><code>GET /v1/institutions/&lt;CODE&gt;.json</code></td><td>e.g. <a href="v1/institutions/NP0101.json">v1/institutions/NP0101.json</a></td></tr>
 <tr><td><code>GET /v1/countries/NP/institutions.json</code></td><td>all ${institutionsNp.length} Nepal institutions</td></tr>
 </table>
+<p>SWIFT/BIC and NCHL are different identifier systems. The combined
+<code>banks.json</code> doesn't deduplicate &mdash; a bank with both
+appears twice, tagged by <code>codeSystem</code>.</p>
 <footer>
   By <a href="https://github.com/alphaseneca">alphaseneca</a>.
   Data: <a href="https://github.com/lobax/banknames">lobax/banknames</a>, from the ISO 9362 Registration Authority's public BIC directory.
