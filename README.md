@@ -1,6 +1,7 @@
 # swiftlookup
 
-SWIFT/BIC code → bank name + country.
+SWIFT/BIC code → bank name + country. See [CHANGELOG.md](CHANGELOG.md)
+for what changed and why.
 
 ## Data
 
