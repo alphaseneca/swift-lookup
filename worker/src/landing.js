@@ -16,11 +16,11 @@ export function renderLanding(meta) {
 <h1>swiftlookup</h1>
 <p>SWIFT/BIC code &rarr; bank name + country. ${meta.recordCount.toLocaleString()} records, ${meta.countryCount} countries.</p>
 <table>
-<tr><td><code>GET /v1/:code</code></td><td>Resolve a SWIFT/BIC code</td></tr>
-<tr><td><code>GET /v1/country/:code</code></td><td>Banks in a country (ISO 3166-1 alpha-2)</td></tr>
+<tr><td><code>GET /v1/codes/:code</code></td><td>Resolve a SWIFT/BIC code</td></tr>
+<tr><td><code>GET /v1/codes?country=&q=&limit=&offset=</code></td><td>List/search codes, paginated</td></tr>
 <tr><td><code>GET /v1/countries</code></td><td>All countries</td></tr>
-<tr><td><code>GET /v1/search?q=</code></td><td>Search by code, bank name, or country</td></tr>
-<tr><td><code>GET /v1/dump</code></td><td>Full dataset</td></tr>
+<tr><td><code>GET /v1/countries/:code</code></td><td>Single country info</td></tr>
+<tr><td><code>GET /v1/dump</code></td><td>Full dataset, unpaginated</td></tr>
 <tr><td><code>GET /v1/meta</code></td><td>Dataset info</td></tr>
 </table>
 <footer>

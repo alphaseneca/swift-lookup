@@ -10,45 +10,42 @@ for (const r of records) {
   byCountry.get(r.countryCode).push(r);
 }
 
-const countryIndex = [...byCountry.entries()]
+const countryList = [...byCountry.entries()]
   .map(([code, banks]) => ({ code, name: banks[0].country, bankCount: banks.length }))
   .sort((a, b) => a.code.localeCompare(b.code));
+const countryByCode = new Map(countryList.map((c) => [c.code, c]));
 
 const META = {
   author: "alphaseneca",
   dataSource: "ISO 9362 Registration Authority (iso9362.org), via lobax/banknames (MIT)",
   recordCount: records.length,
-  countryCount: countryIndex.length,
+  countryCount: countryList.length,
   swiftCodeFormat: "bankCode(4) + countryCode(2): first 6 chars of any SWIFT/BIC code",
 };
 
 const RATE_LIMIT = { limit: 1200, periodSeconds: 60 };
+const MAX_LIMIT = 200;
+const DEFAULT_LIMIT = 25;
 
-function lookup(code) {
-  if (!code) return null;
-  const normalized = code.trim().toUpperCase().replace(/\s+/g, "");
-  if (normalized.length < 6) return null;
-  return byCode.get(normalized.slice(0, 6)) || null;
+// ---------- response helpers ----------
+
+function ok(data, status = 200, extraHeaders = {}) {
+  return send({ data }, status, extraHeaders);
 }
 
-function search(q, limit) {
-  const needle = q.trim().toUpperCase();
-  const out = [];
-  for (const r of records) {
-    if (
-      r.swiftCode.includes(needle) ||
-      r.bank.toUpperCase().includes(needle) ||
-      r.countryCode === needle ||
-      r.country.toUpperCase().includes(needle)
-    ) {
-      out.push(r);
-      if (out.length >= limit) break;
-    }
-  }
-  return out;
+function paginated(data, { limit, offset, total }, extraHeaders = {}) {
+  return send(
+    { data, pagination: { total, limit, offset, hasMore: offset + data.length < total } },
+    200,
+    extraHeaders
+  );
 }
 
-function json(body, status = 200, extraHeaders = {}) {
+function fail(code, message, status, extraHeaders = {}) {
+  return send({ error: { code, message } }, status, extraHeaders);
+}
+
+function send(body, status, extraHeaders = {}) {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
@@ -66,50 +63,86 @@ function html(body) {
   });
 }
 
-// API lives under /v1; everything below assumes `parts` has "v1" stripped.
+// ---------- data access ----------
+
+function lookupCode(code) {
+  const normalized = code.trim().toUpperCase().replace(/\s+/g, "");
+  if (normalized.length < 6) return null;
+  return byCode.get(normalized.slice(0, 6)) || null;
+}
+
+function parsePagination(url) {
+  const limit = Math.min(
+    Math.max(parseInt(url.searchParams.get("limit") || String(DEFAULT_LIMIT), 10) || DEFAULT_LIMIT, 1),
+    MAX_LIMIT
+  );
+  const offset = Math.max(parseInt(url.searchParams.get("offset") || "0", 10) || 0, 0);
+  return { limit, offset };
+}
+
+// Filters by ?country= and/or ?q=, then paginates. With neither param, this
+// just pages through the full sorted dataset.
+function queryCodes(url) {
+  const country = (url.searchParams.get("country") || "").trim().toUpperCase();
+  const q = (url.searchParams.get("q") || "").trim().toUpperCase();
+  const { limit, offset } = parsePagination(url);
+
+  let matches = records;
+  if (country) matches = byCountry.get(country) || [];
+  if (q) {
+    matches = matches.filter(
+      (r) =>
+        r.swiftCode.includes(q) ||
+        r.bank.toUpperCase().includes(q) ||
+        r.country.toUpperCase().includes(q)
+    );
+  }
+
+  const page = matches.slice(offset, offset + limit);
+  return paginated(page, { limit, offset, total: matches.length });
+}
+
+// ---------- routing ----------
+// Everything lives under /v1. `parts` below always has "v1" stripped.
+
 function routeV1(url, parts) {
   if (parts.length === 0) {
-    return json({
+    return ok({
       name: "swiftlookup",
       endpoints: [
-        "GET /v1/:code             -> { swiftCode, bankCode, countryCode, country, bank }",
-        "GET /v1/country/:code     -> banks in that country (ISO 3166-1 alpha-2)",
-        "GET /v1/countries         -> [{ code, name, bankCount }]",
-        "GET /v1/search?q=&limit=  -> match on code, bank name, or country",
-        "GET /v1/dump              -> full record array",
-        "GET /v1/meta              -> dataset info",
+        "GET /v1/codes/:code         -> single code lookup",
+        "GET /v1/codes?country=&q=&limit=&offset= -> list/search codes",
+        "GET /v1/countries           -> all countries",
+        "GET /v1/countries/:code     -> single country info",
+        "GET /v1/dump                -> full dataset, unpaginated",
+        "GET /v1/meta                -> dataset info",
       ],
       meta: META,
     });
   }
 
-  // Reserved paths checked first; anything else here is a code lookup.
-  if (parts.length === 1) {
-    if (parts[0] === "meta") return json(META);
-    if (parts[0] === "dump") return json(records);
-    if (parts[0] === "countries") return json(countryIndex);
-    if (parts[0] === "search") {
-      const q = url.searchParams.get("q") || "";
-      const limit = Math.min(parseInt(url.searchParams.get("limit") || "25", 10) || 25, 200);
-      if (!q) return json({ error: "missing ?q=" }, 400);
-      return json(search(q, limit));
+  if (parts[0] === "meta" && parts.length === 1) return ok(META);
+  if (parts[0] === "dump" && parts.length === 1) return ok(records);
+
+  if (parts[0] === "codes") {
+    if (parts.length === 1) return queryCodes(url);
+    if (parts.length === 2) {
+      const result = lookupCode(parts[1]);
+      if (!result) return fail("NOT_FOUND", `no bank found for code "${parts[1]}"`, 404);
+      return ok(result);
     }
   }
 
-  if (parts[0] === "country" && parts.length === 2) {
-    const code = parts[1].trim().toUpperCase();
-    const banks = byCountry.get(code);
-    if (!banks) return json({ error: "unknown country code", code }, 404);
-    return json(banks);
+  if (parts[0] === "countries") {
+    if (parts.length === 1) return ok(countryList);
+    if (parts.length === 2) {
+      const country = countryByCode.get(parts[1].trim().toUpperCase());
+      if (!country) return fail("NOT_FOUND", `no country found for code "${parts[1]}"`, 404);
+      return ok(country);
+    }
   }
 
-  if (parts.length === 1) {
-    const result = lookup(parts[0]);
-    if (!result) return json({ error: "unknown swift code", code: parts[0] }, 404);
-    return json(result);
-  }
-
-  return json({ error: "not found" }, 404);
+  return fail("NOT_FOUND", `no route for "/${parts.join("/")}"`, 404);
 }
 
 function route(request) {
@@ -118,7 +151,7 @@ function route(request) {
 
   if (parts.length === 0) return html(renderLanding(META));
   if (parts[0] === "v1") return routeV1(url, parts.slice(1));
-  return json({ error: "not found" }, 404);
+  return fail("NOT_FOUND", `no route for "/${parts.join("/")}"`, 404);
 }
 
 export default {
@@ -132,14 +165,17 @@ export default {
         },
       });
     }
-    if (request.method !== "GET") return json({ error: "method not allowed" }, 405);
+    if (request.method !== "GET") {
+      return fail("METHOD_NOT_ALLOWED", `${request.method} is not supported`, 405);
+    }
 
     if (env.RATE_LIMITER) {
       const ip = request.headers.get("CF-Connecting-IP") || "unknown";
       const { success } = await env.RATE_LIMITER.limit({ key: ip });
       if (!success) {
-        return json(
-          { error: "rate limit exceeded", limit: RATE_LIMIT.limit, periodSeconds: RATE_LIMIT.periodSeconds },
+        return fail(
+          "RATE_LIMITED",
+          `rate limit exceeded: ${RATE_LIMIT.limit} requests per ${RATE_LIMIT.periodSeconds}s`,
           429,
           { "Retry-After": String(RATE_LIMIT.periodSeconds) }
         );

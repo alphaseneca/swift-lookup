@@ -45,19 +45,30 @@ npm run build-data
 
 ## API
 
-Served two ways: `worker/` (Cloudflare Worker, dynamic) and `site/`
-(pre-generated static JSON files, no query params). Both versioned under
-`/v1`. `GET /` is a plain HTML landing page, not part of the API.
+Served two ways: `worker/` (Cloudflare Worker, dynamic — filtering,
+search, pagination) and `site/` (pre-generated static JSON files, one
+file per resource, no query params). Both versioned under `/v1`. `GET /`
+is a plain HTML landing page, not part of the API.
 
 | Method & path | Returns | Static equivalent |
 |---|---|---|
 | `GET /v1` | API info | — |
-| `GET /v1/:code` | `{ swiftCode, bankCode, countryCode, country, bank }` or 404 | `/v1/<CODE>.json` |
-| `GET /v1/country/:code` | Banks in a country (ISO 3166-1 alpha-2) or 404 | `/v1/country/<CC>.json` |
-| `GET /v1/countries` | `[{ code, name, bankCount }]` | `/v1/countries.json` |
-| `GET /v1/search?q=&limit=` | Match on code, bank name, or country. `limit` default 25, max 200 | — |
-| `GET /v1/dump` | All 33,593 records | `/v1/dump.json` |
-| `GET /v1/meta` | Dataset info | `/v1/meta.json` |
+| `GET /v1/codes/:code` | `{ data: { swiftCode, bankCode, countryCode, country, bank } }` or 404 | `/v1/codes/<CODE>.json` |
+| `GET /v1/codes?country=&q=&limit=&offset=` | `{ data: [...], pagination }`. No params → first page of everything | — |
+| `GET /v1/countries` | `{ data: [{ code, name, bankCount }] }` | `/v1/countries.json` |
+| `GET /v1/countries/:code` | `{ data: { code, name, bankCount } }` or 404 | `/v1/countries/<CC>.json` |
+| — banks in a country | `{ data: [...], pagination }` | `/v1/countries/<CC>/codes.json` |
+| `GET /v1/dump` | `{ data: [...] }`, all 33,593 records, unpaginated | `/v1/dump.json` |
+| `GET /v1/meta` | `{ data: {...} }` | `/v1/meta.json` |
+
+Dynamic-only equivalent of the static country-codes file:
+`GET /v1/codes?country=NP&limit=200`.
+
+Errors: `{ error: { code, message } }` — `code` is one of `NOT_FOUND`,
+`BAD_REQUEST`, `METHOD_NOT_ALLOWED`, `RATE_LIMITED`.
+
+Pagination: `limit` default 25, max 200. `offset` default 0.
+`pagination: { total, limit, offset, hasMore }`.
 
 CORS: `Access-Control-Allow-Origin: *`.
 

@@ -1,5 +1,8 @@
 #!/usr/bin/env node
-// Builds site/ from data/swift-codes.json: one JSON file per route, under v1/.
+// Builds site/ from data/swift-codes.json: a static mirror of the /v1 API,
+// one JSON file per resource. Responses match the Worker's envelope shape
+// ({ data } / { data, pagination }) so client code can treat either source
+// the same way.
 "use strict";
 
 const fs = require("fs");
@@ -14,24 +17,20 @@ if (!dataPath || !metaPath || !outDir) {
 const records = JSON.parse(fs.readFileSync(dataPath, "utf8"));
 const meta = JSON.parse(fs.readFileSync(metaPath, "utf8"));
 
-const RESERVED = new Set(["meta", "dump", "countries", "country", "index"]);
-for (const r of records) {
-  if (RESERVED.has(r.swiftCode.toLowerCase())) {
-    throw new Error(`swiftCode "${r.swiftCode}" collides with a reserved path`);
-  }
-}
-
 fs.rmSync(outDir, { recursive: true, force: true });
-const v1Dir = path.join(outDir, "v1");
-fs.mkdirSync(path.join(v1Dir, "country"), { recursive: true });
+const v1 = path.join(outDir, "v1");
+fs.mkdirSync(path.join(v1, "codes"), { recursive: true });
+fs.mkdirSync(path.join(v1, "countries"), { recursive: true });
 // Serve files as-is; skip Jekyll processing (slow over ~34k files, unneeded).
 fs.writeFileSync(path.join(outDir, ".nojekyll"), "");
 
-fs.writeFileSync(path.join(v1Dir, "dump.json"), JSON.stringify(records));
-fs.writeFileSync(path.join(v1Dir, "meta.json"), JSON.stringify(meta, null, 2));
+const writeJson = (p, body) => fs.writeFileSync(p, JSON.stringify(body));
+
+writeJson(path.join(v1, "dump.json"), { data: records });
+writeJson(path.join(v1, "meta.json"), { data: meta });
 
 for (const r of records) {
-  fs.writeFileSync(path.join(v1Dir, `${r.swiftCode}.json`), JSON.stringify(r));
+  writeJson(path.join(v1, "codes", `${r.swiftCode}.json`), { data: r });
 }
 
 const byCountry = new Map();
@@ -39,13 +38,21 @@ for (const r of records) {
   if (!byCountry.has(r.countryCode)) byCountry.set(r.countryCode, []);
   byCountry.get(r.countryCode).push(r);
 }
-const countryIndex = [];
+const countryList = [];
 for (const [code, banks] of byCountry) {
-  fs.writeFileSync(path.join(v1Dir, "country", `${code}.json`), JSON.stringify(banks));
-  countryIndex.push({ code, name: banks[0].country, bankCount: banks.length });
+  const total = banks.length;
+  fs.mkdirSync(path.join(v1, "countries", code), { recursive: true });
+  writeJson(path.join(v1, "countries", `${code}.json`), {
+    data: { code, name: banks[0].country, bankCount: total },
+  });
+  writeJson(path.join(v1, "countries", code, "codes.json"), {
+    data: banks,
+    pagination: { total, limit: total, offset: 0, hasMore: false },
+  });
+  countryList.push({ code, name: banks[0].country, bankCount: total });
 }
-countryIndex.sort((a, b) => a.code.localeCompare(b.code));
-fs.writeFileSync(path.join(v1Dir, "countries.json"), JSON.stringify(countryIndex, null, 2));
+countryList.sort((a, b) => a.code.localeCompare(b.code));
+writeJson(path.join(v1, "countries.json"), { data: countryList });
 
 fs.writeFileSync(
   path.join(outDir, "index.html"),
@@ -64,11 +71,12 @@ fs.writeFileSync(
   footer{margin-top:3rem;color:#666;font-size:.9em}
 </style>
 <h1>swiftlookup</h1>
-<p>Static mirror. SWIFT/BIC code &rarr; bank name + country. ${records.length.toLocaleString()} records, ${countryIndex.length} countries. No query params — every path is a real file.</p>
+<p>Static mirror. SWIFT/BIC code &rarr; bank name + country. ${records.length.toLocaleString()} records, ${countryList.length} countries. No query params &mdash; every path is a real file.</p>
 <table>
-<tr><td><code>GET /v1/&lt;CODE&gt;.json</code></td><td>e.g. <a href="v1/DEUTDE.json">v1/DEUTDE.json</a></td></tr>
-<tr><td><code>GET /v1/country/&lt;CC&gt;.json</code></td><td>e.g. <a href="v1/country/NP.json">v1/country/NP.json</a></td></tr>
-<tr><td><code>GET /v1/countries.json</code></td><td>all ${countryIndex.length} countries</td></tr>
+<tr><td><code>GET /v1/codes/&lt;CODE&gt;.json</code></td><td>e.g. <a href="v1/codes/DEUTDE.json">v1/codes/DEUTDE.json</a></td></tr>
+<tr><td><code>GET /v1/countries/&lt;CC&gt;.json</code></td><td>e.g. <a href="v1/countries/NP.json">v1/countries/NP.json</a></td></tr>
+<tr><td><code>GET /v1/countries/&lt;CC&gt;/codes.json</code></td><td>e.g. <a href="v1/countries/NP/codes.json">v1/countries/NP/codes.json</a></td></tr>
+<tr><td><code>GET /v1/countries.json</code></td><td>all ${countryList.length} countries</td></tr>
 <tr><td><code>GET /v1/dump.json</code></td><td>all ${records.length} records</td></tr>
 <tr><td><code>GET /v1/meta.json</code></td><td>dataset info</td></tr>
 </table>
@@ -80,4 +88,4 @@ fs.writeFileSync(
 `
 );
 
-console.log(`${records.length} code files, ${countryIndex.length} country files -> ${outDir}`);
+console.log(`${records.length} code files, ${countryList.length} country files -> ${outDir}`);
