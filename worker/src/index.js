@@ -14,8 +14,7 @@ const countryIndex = [...byCountry.entries()]
   .sort((a, b) => a.code.localeCompare(b.code));
 
 const META = {
-  source: "lobax/banknames",
-  sourceLicense: "MIT",
+  author: "alphaseneca",
   recordCount: records.length,
   countryCount: countryIndex.length,
   swiftCodeFormat: "bankCode(4) + countryCode(2): first 6 chars of any SWIFT/BIC code",

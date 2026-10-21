@@ -1,10 +1,6 @@
 {
-  "source": "lobax/banknames",
-  "sourceLicense": "MIT",
-  "sourceOrigin": "ISO 9362 Registration Authority public BIC directory (iso9362.org)",
-  "sourceRelease": "v26.7",
-  "countryNamesSource": "lukes/ISO-3166-Countries-with-Regional-Codes",
-  "builtAt": "2026-10-21T21:52:48.507894+00:00",
+  "author": "alphaseneca",
+  "builtAt": "2026-10-21T22:03:19.373586+00:00",
   "recordCount": 33593,
   "countryCount": 232,
   "swiftCodeFormat": "bankCode(4) + countryCode(2): first 6 chars of any SWIFT/BIC code",

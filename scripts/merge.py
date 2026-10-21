@@ -53,11 +53,7 @@ def main():
         json.dump(records, f, ensure_ascii=False, separators=(",", ":"))
 
     meta = {
-        "source": "lobax/banknames",
-        "sourceLicense": "MIT",
-        "sourceOrigin": "ISO 9362 Registration Authority public BIC directory (iso9362.org)",
-        "sourceRelease": args.release_tag,
-        "countryNamesSource": "lukes/ISO-3166-Countries-with-Regional-Codes",
+        "author": "alphaseneca",
         "builtAt": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "recordCount": len(records),
         "countryCount": len(country_files),
