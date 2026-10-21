@@ -23,6 +23,11 @@ export function renderLanding(meta) {
 <tr><td><code>GET /v1/dump</code></td><td>Full dataset, unpaginated</td></tr>
 <tr><td><code>GET /v1/meta</code></td><td>Dataset info</td></tr>
 </table>
+<p>Domestic institution codes (NCHL, Nepal only &mdash; not SWIFT/BIC, and not microfinance institutions):</p>
+<table>
+<tr><td><code>GET /v1/institutions/:code</code></td><td>Resolve a domestic institution code</td></tr>
+<tr><td><code>GET /v1/institutions?country=NP&limit=&offset=</code></td><td>List institutions for a country</td></tr>
+</table>
 <footer>
   By <a href="https://github.com/alphaseneca">alphaseneca</a>.
   Data: <a href="https://github.com/lobax/banknames">lobax/banknames</a>, from the ISO 9362 Registration Authority's public BIC directory.

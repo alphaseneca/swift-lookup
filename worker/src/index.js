@@ -1,4 +1,5 @@
 import records from "../../data/swift-codes.json";
+import institutionsNp from "../../data/institutions-np.json";
 import { renderLanding } from "./landing.js";
 
 const byCode = new Map();
@@ -10,8 +11,19 @@ for (const r of records) {
   byCountry.get(r.countryCode).push(r);
 }
 
+// Country-specific domestic institution directories (NCHL codes, not
+// SWIFT/BIC). Currently just Nepal. Keyed by countryCode so adding
+// another country later is a map entry, not a new code path.
+const institutionsByCountry = new Map([["NP", institutionsNp]]);
+const institutionByCode = new Map(institutionsNp.map((i) => [i.institutionCode, i]));
+
 const countryList = [...byCountry.entries()]
-  .map(([code, banks]) => ({ code, name: banks[0].country, bankCount: banks.length }))
+  .map(([code, banks]) => ({
+    code,
+    name: banks[0].country,
+    bankCount: banks.length,
+    hasInstitutionDirectory: institutionsByCountry.has(code),
+  }))
   .sort((a, b) => a.code.localeCompare(b.code));
 const countryByCode = new Map(countryList.map((c) => [c.code, c]));
 
@@ -102,6 +114,20 @@ function queryCodes(url) {
   return paginated(page, { limit, offset, total: matches.length });
 }
 
+// Domestic institution directories (NCHL for Nepal). ?country= is
+// required since there's no cross-country identifier space here, unlike
+// SWIFT codes.
+function queryInstitutions(url) {
+  const country = (url.searchParams.get("country") || "").trim().toUpperCase();
+  if (!country) return fail("BAD_REQUEST", "missing ?country=", 400);
+  const all = institutionsByCountry.get(country);
+  if (!all) {
+    return fail("NOT_FOUND", `no institution directory for country "${country}"`, 404);
+  }
+  const { limit, offset } = parsePagination(url);
+  return paginated(all.slice(offset, offset + limit), { limit, offset, total: all.length });
+}
+
 // ---------- routing ----------
 // Everything lives under /v1. `parts` below always has "v1" stripped.
 
@@ -110,12 +136,14 @@ function routeV1(url, parts) {
     return ok({
       name: "swiftlookup",
       endpoints: [
-        "GET /v1/codes/:code         -> single code lookup",
-        "GET /v1/codes?country=&q=&limit=&offset= -> list/search codes",
-        "GET /v1/countries           -> all countries",
-        "GET /v1/countries/:code     -> single country info",
-        "GET /v1/dump                -> full dataset, unpaginated",
-        "GET /v1/meta                -> dataset info",
+        "GET /v1/codes/:code                -> single SWIFT/BIC code lookup",
+        "GET /v1/codes?country=&q=&limit=&offset= -> list/search SWIFT/BIC codes",
+        "GET /v1/countries                  -> all countries",
+        "GET /v1/countries/:code            -> single country info",
+        "GET /v1/institutions/:code         -> single domestic institution lookup (NCHL, Nepal only)",
+        "GET /v1/institutions?country=&limit=&offset= -> list domestic institutions for a country",
+        "GET /v1/dump                       -> full SWIFT/BIC dataset, unpaginated",
+        "GET /v1/meta                       -> dataset info",
       ],
       meta: META,
     });
@@ -139,6 +167,15 @@ function routeV1(url, parts) {
       const country = countryByCode.get(parts[1].trim().toUpperCase());
       if (!country) return fail("NOT_FOUND", `no country found for code "${parts[1]}"`, 404);
       return ok(country);
+    }
+  }
+
+  if (parts[0] === "institutions") {
+    if (parts.length === 1) return queryInstitutions(url);
+    if (parts.length === 2) {
+      const result = institutionByCode.get(parts[1].trim().toUpperCase());
+      if (!result) return fail("NOT_FOUND", `no institution found for code "${parts[1]}"`, 404);
+      return ok(result);
     }
   }
 

@@ -43,6 +43,31 @@ Refresh:
 npm run build-data
 ```
 
+## Domestic institution directories (separate from SWIFT)
+
+Not every bank has a SWIFT code — only institutions that do their own
+cross-border correspondent banking get one. A country's full set of
+licensed banks/financial institutions is a different, per-country dataset
+with its own identifier scheme. Currently covers Nepal only.
+
+| | |
+|---|---|
+| Country | Nepal (`NP`) |
+| Records | 53 |
+| Source | [NCHL](https://nchl.com.np) member/branch list (nchl.com.np) |
+| Code system | NCHL 4-digit bank code, prefixed with country (`institutionCode`, e.g. `NP0101`) — **not** SWIFT/BIC |
+| Coverage | Commercial banks, development banks, finance companies. **Not** microfinance institutions (not members of NCHL's cheque-clearing network) — roughly 50 of Nepal's ~103 licensed BFIs are missing for that reason. |
+
+Record shape:
+
+```json
+{"institutionCode":"NP0101","bankCode":"0101","shortName":"NBL","name":"Nepal Bank Ltd.","countryCode":"NP","codeSystem":"NCHL"}
+```
+
+Adding another country means a new `build-<cc>-institutions.py` script
+(format differs per regulator/clearing house — there's no standard) and
+one entry in the Worker's `institutionsByCountry` map.
+
 ## API
 
 Served two ways: `worker/` (Cloudflare Worker, dynamic — filtering,
@@ -60,6 +85,8 @@ is a plain HTML landing page, not part of the API.
 | — banks in a country | `{ data: [...], pagination }` | `/v1/countries/<CC>/codes.json` |
 | `GET /v1/dump` | `{ data: [...] }`, all 33,593 records, unpaginated | `/v1/dump.json` |
 | `GET /v1/meta` | `{ data: {...} }` | `/v1/meta.json` |
+| `GET /v1/institutions/:code` | Domestic institution lookup (NCHL, Nepal only) or 404 | `/v1/institutions/<CODE>.json` |
+| `GET /v1/institutions?country=&limit=&offset=` | `{ data: [...], pagination }`. `country` required | `/v1/countries/<CC>/institutions.json` |
 
 Dynamic-only equivalent of the static country-codes file:
 `GET /v1/codes?country=NP&limit=200`.
@@ -79,11 +106,15 @@ Over limit → `429` + `Retry-After: 60`. Approximate, not a hard global cap.
 
 ```
 wrangler.toml    Worker config (deploy runs from repo root)
-data/            swift-codes.json, meta.json — committed, refreshed by build-data.sh
+data/            committed, refreshed by build-data.sh
+  swift-codes.json, meta.json
+  institutions-np.json
 scripts/
-  build-data.sh    fetch + merge + build site
-  merge.py         data/swift-codes.json builder
-  build-site.js    site/ builder
+  build-data.sh             fetch + merge + build site (self-installs a
+                             throwaway Python venv for pdfplumber)
+  merge.py                  data/swift-codes.json builder
+  build-np-institutions.py  data/institutions-np.json builder
+  build-site.js             site/ builder
 site/            generated static output, not committed
 worker/
   src/index.js     routing
@@ -98,3 +129,4 @@ Repo code: MIT ([LICENSE](LICENSE)).
 |---|---|
 | [lobax/banknames](https://github.com/lobax/banknames) | MIT |
 | [ISO-3166-Countries-with-Regional-Codes](https://github.com/lukes/ISO-3166-Countries-with-Regional-Codes) | MIT |
+| [NCHL](https://nchl.com.np) member/branch list | public, no explicit license stated |

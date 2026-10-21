@@ -7,6 +7,8 @@
 #     https://github.com/lobax/banknames
 #   - lukes/ISO-3166-Countries-with-Regional-Codes (MIT) — ISO 3166-1
 #     alpha-2 -> country name.
+#   - NCHL (nchl.com.np) — Nepal-only domestic institution directory
+#     (NCHL codes, not SWIFT/BIC). See build-np-institutions.py.
 #
 # Intended to be run periodically to pick up registry updates.
 set -euo pipefail
@@ -66,7 +68,16 @@ python3 "$SCRIPT_DIR/merge.py" \
   --out "$ROOT_DIR/data/swift-codes.json" \
   --out-meta "$ROOT_DIR/data/meta.json"
 
+echo "Building Nepal institution directory (NCHL, separate from SWIFT)..."
+PYENV_DIR="$WORK_DIR/pyenv"
+python3 -m venv "$PYENV_DIR"
+"$PYENV_DIR/bin/pip" install --quiet -r "$SCRIPT_DIR/requirements.txt"
+"$PYENV_DIR/bin/python3" "$SCRIPT_DIR/build-np-institutions.py" \
+  --pdf-path "$WORK_DIR/nchl_branches.pdf" \
+  --out "$ROOT_DIR/data/institutions-np.json"
+
 echo "Generating static site..."
-node "$SCRIPT_DIR/build-site.js" "$ROOT_DIR/data/swift-codes.json" "$ROOT_DIR/data/meta.json" "$ROOT_DIR/site"
+node "$SCRIPT_DIR/build-site.js" "$ROOT_DIR/data/swift-codes.json" "$ROOT_DIR/data/meta.json" \
+  "$ROOT_DIR/data/institutions-np.json" "$ROOT_DIR/site"
 
 echo "Done."

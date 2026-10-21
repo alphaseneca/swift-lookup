@@ -8,19 +8,23 @@
 const fs = require("fs");
 const path = require("path");
 
-const [, , dataPath, metaPath, outDir] = process.argv;
-if (!dataPath || !metaPath || !outDir) {
-  console.error("usage: build-site.js <swift-codes.json> <meta.json> <out-dir>");
+const [, , dataPath, metaPath, institutionsNpPath, outDir] = process.argv;
+if (!dataPath || !metaPath || !institutionsNpPath || !outDir) {
+  console.error(
+    "usage: build-site.js <swift-codes.json> <meta.json> <institutions-np.json> <out-dir>"
+  );
   process.exit(1);
 }
 
 const records = JSON.parse(fs.readFileSync(dataPath, "utf8"));
 const meta = JSON.parse(fs.readFileSync(metaPath, "utf8"));
+const institutionsNp = JSON.parse(fs.readFileSync(institutionsNpPath, "utf8"));
 
 fs.rmSync(outDir, { recursive: true, force: true });
 const v1 = path.join(outDir, "v1");
 fs.mkdirSync(path.join(v1, "codes"), { recursive: true });
 fs.mkdirSync(path.join(v1, "countries"), { recursive: true });
+fs.mkdirSync(path.join(v1, "institutions"), { recursive: true });
 // Serve files as-is; skip Jekyll processing (slow over ~34k files, unneeded).
 fs.writeFileSync(path.join(outDir, ".nojekyll"), "");
 
@@ -54,6 +58,15 @@ for (const [code, banks] of byCountry) {
 countryList.sort((a, b) => a.code.localeCompare(b.code));
 writeJson(path.join(v1, "countries.json"), { data: countryList });
 
+for (const inst of institutionsNp) {
+  writeJson(path.join(v1, "institutions", `${inst.institutionCode}.json`), { data: inst });
+}
+fs.mkdirSync(path.join(v1, "countries", "NP"), { recursive: true });
+writeJson(path.join(v1, "countries", "NP", "institutions.json"), {
+  data: institutionsNp,
+  pagination: { total: institutionsNp.length, limit: institutionsNp.length, offset: 0, hasMore: false },
+});
+
 fs.writeFileSync(
   path.join(outDir, "index.html"),
   `<!doctype html>
@@ -79,6 +92,11 @@ fs.writeFileSync(
 <tr><td><code>GET /v1/countries.json</code></td><td>all ${countryList.length} countries</td></tr>
 <tr><td><code>GET /v1/dump.json</code></td><td>all ${records.length} records</td></tr>
 <tr><td><code>GET /v1/meta.json</code></td><td>dataset info</td></tr>
+</table>
+<p>Nepal only, separate from SWIFT &mdash; domestic NCHL institution codes (${institutionsNp.length} banks/finance companies, not microfinance):</p>
+<table>
+<tr><td><code>GET /v1/institutions/&lt;CODE&gt;.json</code></td><td>e.g. <a href="v1/institutions/NP0101.json">v1/institutions/NP0101.json</a></td></tr>
+<tr><td><code>GET /v1/countries/NP/institutions.json</code></td><td>all ${institutionsNp.length} Nepal institutions</td></tr>
 </table>
 <footer>
   By <a href="https://github.com/alphaseneca">alphaseneca</a>.
