@@ -1,8 +1,8 @@
 {
   "author": "alphaseneca",
-  "builtAt": "2026-10-21T22:03:19.373586+00:00",
+  "dataSource": "ISO 9362 Registration Authority (iso9362.org), via lobax/banknames (MIT)",
+  "builtAt": "2026-10-21T22:15:00.848122+00:00",
   "recordCount": 33593,
   "countryCount": 232,
-  "swiftCodeFormat": "bankCode(4) + countryCode(2): first 6 chars of any SWIFT/BIC code",
-  "knownLimitation": "1 name per bankCode+countryCode; if a code maps to multiple entities upstream, only the first is kept"
+  "swiftCodeFormat": "bankCode(4) + countryCode(2): first 6 chars of any SWIFT/BIC code"
 }

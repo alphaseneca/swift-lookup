@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Builds site/ from data/swift-codes.json: one JSON file per route.
+// Builds site/ from data/swift-codes.json: one JSON file per route, under v1/.
 "use strict";
 
 const fs = require("fs");
@@ -22,15 +22,16 @@ for (const r of records) {
 }
 
 fs.rmSync(outDir, { recursive: true, force: true });
-fs.mkdirSync(path.join(outDir, "country"), { recursive: true });
+const v1Dir = path.join(outDir, "v1");
+fs.mkdirSync(path.join(v1Dir, "country"), { recursive: true });
 // Serve files as-is; skip Jekyll processing (slow over ~34k files, unneeded).
 fs.writeFileSync(path.join(outDir, ".nojekyll"), "");
 
-fs.writeFileSync(path.join(outDir, "dump.json"), JSON.stringify(records));
-fs.writeFileSync(path.join(outDir, "meta.json"), JSON.stringify(meta, null, 2));
+fs.writeFileSync(path.join(v1Dir, "dump.json"), JSON.stringify(records));
+fs.writeFileSync(path.join(v1Dir, "meta.json"), JSON.stringify(meta, null, 2));
 
 for (const r of records) {
-  fs.writeFileSync(path.join(outDir, `${r.swiftCode}.json`), JSON.stringify(r));
+  fs.writeFileSync(path.join(v1Dir, `${r.swiftCode}.json`), JSON.stringify(r));
 }
 
 const byCountry = new Map();
@@ -40,27 +41,42 @@ for (const r of records) {
 }
 const countryIndex = [];
 for (const [code, banks] of byCountry) {
-  fs.writeFileSync(path.join(outDir, "country", `${code}.json`), JSON.stringify(banks));
+  fs.writeFileSync(path.join(v1Dir, "country", `${code}.json`), JSON.stringify(banks));
   countryIndex.push({ code, name: banks[0].country, bankCount: banks.length });
 }
 countryIndex.sort((a, b) => a.code.localeCompare(b.code));
-fs.writeFileSync(path.join(outDir, "countries.json"), JSON.stringify(countryIndex, null, 2));
+fs.writeFileSync(path.join(v1Dir, "countries.json"), JSON.stringify(countryIndex, null, 2));
 
 fs.writeFileSync(
   path.join(outDir, "index.html"),
   `<!doctype html>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>swiftlookup</title>
-<style>body{font:14px/1.5 monospace;max-width:640px;margin:3rem auto;padding:0 1rem}</style>
+<style>
+  body{font:15px/1.6 -apple-system,system-ui,sans-serif;max-width:640px;margin:4rem auto;padding:0 1.5rem;color:#1a1a1a}
+  code{background:#f2f2f2;padding:.15em .4em;border-radius:4px;font-size:.9em}
+  table{width:100%;border-collapse:collapse;margin:1.5rem 0}
+  td{padding:.4rem 0;border-bottom:1px solid #eee;vertical-align:top}
+  td:first-child{font-family:monospace;white-space:nowrap;padding-right:1rem}
+  a{color:#0969da;text-decoration:none}
+  a:hover{text-decoration:underline}
+  footer{margin-top:3rem;color:#666;font-size:.9em}
+</style>
 <h1>swiftlookup</h1>
-<p>Static. No query params. Built ${meta.builtAt}.</p>
-<ul>
-<li><code>GET /&lt;CODE&gt;.json</code> — e.g. <a href="DEUTDE.json">DEUTDE.json</a></li>
-<li><code>GET /country/&lt;CC&gt;.json</code> — e.g. <a href="country/NP.json">country/NP.json</a></li>
-<li><code>GET /countries.json</code> — ${countryIndex.length} countries</li>
-<li><code>GET /dump.json</code> — all ${records.length} records</li>
-<li><code>GET /meta.json</code></li>
-</ul>
+<p>Static mirror. SWIFT/BIC code &rarr; bank name + country. ${records.length.toLocaleString()} records, ${countryIndex.length} countries. No query params — every path is a real file.</p>
+<table>
+<tr><td><code>GET /v1/&lt;CODE&gt;.json</code></td><td>e.g. <a href="v1/DEUTDE.json">v1/DEUTDE.json</a></td></tr>
+<tr><td><code>GET /v1/country/&lt;CC&gt;.json</code></td><td>e.g. <a href="v1/country/NP.json">v1/country/NP.json</a></td></tr>
+<tr><td><code>GET /v1/countries.json</code></td><td>all ${countryIndex.length} countries</td></tr>
+<tr><td><code>GET /v1/dump.json</code></td><td>all ${records.length} records</td></tr>
+<tr><td><code>GET /v1/meta.json</code></td><td>dataset info</td></tr>
+</table>
+<footer>
+  By <a href="https://github.com/alphaseneca">alphaseneca</a>.
+  Data: <a href="https://github.com/lobax/banknames">lobax/banknames</a>, from the ISO 9362 Registration Authority's public BIC directory.
+  <a href="https://github.com/alphaseneca/swift-lookup">Source</a>.
+</footer>
 `
 );
 

@@ -1,4 +1,5 @@
 import records from "../../data/swift-codes.json";
+import { renderLanding } from "./landing.js";
 
 const byCode = new Map();
 for (const r of records) byCode.set(r.swiftCode, r);
@@ -15,6 +16,7 @@ const countryIndex = [...byCountry.entries()]
 
 const META = {
   author: "alphaseneca",
+  dataSource: "ISO 9362 Registration Authority (iso9362.org), via lobax/banknames (MIT)",
   recordCount: records.length,
   countryCount: countryIndex.length,
   swiftCodeFormat: "bankCode(4) + countryCode(2): first 6 chars of any SWIFT/BIC code",
@@ -58,26 +60,30 @@ function json(body, status = 200, extraHeaders = {}) {
   });
 }
 
-function route(request) {
-  const url = new URL(request.url);
-  const parts = url.pathname.split("/").filter(Boolean);
+function html(body) {
+  return new Response(body, {
+    headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=3600" },
+  });
+}
 
+// API lives under /v1; everything below assumes `parts` has "v1" stripped.
+function routeV1(url, parts) {
   if (parts.length === 0) {
     return json({
       name: "swiftlookup",
       endpoints: [
-        "GET /:code             -> { swiftCode, bankCode, countryCode, country, bank }",
-        "GET /country/:code     -> banks in that country (ISO 3166-1 alpha-2)",
-        "GET /countries         -> [{ code, name, bankCount }]",
-        "GET /search?q=&limit=  -> match on code, bank name, or country",
-        "GET /dump              -> full record array",
-        "GET /meta              -> dataset info",
+        "GET /v1/:code             -> { swiftCode, bankCode, countryCode, country, bank }",
+        "GET /v1/country/:code     -> banks in that country (ISO 3166-1 alpha-2)",
+        "GET /v1/countries         -> [{ code, name, bankCount }]",
+        "GET /v1/search?q=&limit=  -> match on code, bank name, or country",
+        "GET /v1/dump              -> full record array",
+        "GET /v1/meta              -> dataset info",
       ],
       meta: META,
     });
   }
 
-  // Reserved paths checked first; anything else at root is a code lookup.
+  // Reserved paths checked first; anything else here is a code lookup.
   if (parts.length === 1) {
     if (parts[0] === "meta") return json(META);
     if (parts[0] === "dump") return json(records);
@@ -103,6 +109,15 @@ function route(request) {
     return json(result);
   }
 
+  return json({ error: "not found" }, 404);
+}
+
+function route(request) {
+  const url = new URL(request.url);
+  const parts = url.pathname.split("/").filter(Boolean);
+
+  if (parts.length === 0) return html(renderLanding(META));
+  if (parts[0] === "v1") return routeV1(url, parts.slice(1));
   return json({ error: "not found" }, 404);
 }
 

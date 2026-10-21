@@ -54,11 +54,11 @@ def main():
 
     meta = {
         "author": "alphaseneca",
+        "dataSource": "ISO 9362 Registration Authority (iso9362.org), via lobax/banknames (MIT)",
         "builtAt": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "recordCount": len(records),
         "countryCount": len(country_files),
         "swiftCodeFormat": "bankCode(4) + countryCode(2): first 6 chars of any SWIFT/BIC code",
-        "knownLimitation": "1 name per bankCode+countryCode; if a code maps to multiple entities upstream, only the first is kept",
     }
     with open(args.out_meta, "w") as f:
         json.dump(meta, f, indent=2)

@@ -24,8 +24,15 @@ Record shape:
 
 Limits:
 
-- 1 name per `bankCode+countryCode`. If a code maps to multiple entities
-  upstream, only the first is kept.
+- **1 name per `bankCode+countryCode`.** A full SWIFT/BIC code also has a
+  location code and optional branch code (chars 7–11), which can point to
+  a different legal entity under the same bank+country, e.g. a bank's
+  asset-management subsidiary vs. its main retail arm. The upstream data
+  only keeps one name per 6-char prefix — whichever entity it saw first —
+  so a lookup can occasionally return a sibling entity's name instead of
+  the one you expected. Example: `HSBCGB` resolves to an HSBC asset-management
+  entity, not "HSBC Bank plc", because that's what was first in the
+  registry parse. Not a bug here — it's how the upstream dataset is built.
 - Upstream last rebuilt 2026-07-01 (`v26.7`). Monthly auto-rebuild has not
   run since.
 - No city/branch-level data.
@@ -39,16 +46,18 @@ npm run build-data
 ## API
 
 Served two ways: `worker/` (Cloudflare Worker, dynamic) and `site/`
-(pre-generated static JSON files, no query params).
+(pre-generated static JSON files, no query params). Both versioned under
+`/v1`. `GET /` is a plain HTML landing page, not part of the API.
 
 | Method & path | Returns | Static equivalent |
 |---|---|---|
-| `GET /:code` | `{ swiftCode, bankCode, countryCode, country, bank }` or 404 | `/<CODE>.json` |
-| `GET /country/:code` | Banks in a country (ISO 3166-1 alpha-2) or 404 | `/country/<CC>.json` |
-| `GET /countries` | `[{ code, name, bankCount }]` | `/countries.json` |
-| `GET /search?q=&limit=` | Match on code, bank name, or country. `limit` default 25, max 200 | — |
-| `GET /dump` | All 33,593 records | `/dump.json` |
-| `GET /meta` | Dataset info | `/meta.json` |
+| `GET /v1` | API info | — |
+| `GET /v1/:code` | `{ swiftCode, bankCode, countryCode, country, bank }` or 404 | `/v1/<CODE>.json` |
+| `GET /v1/country/:code` | Banks in a country (ISO 3166-1 alpha-2) or 404 | `/v1/country/<CC>.json` |
+| `GET /v1/countries` | `[{ code, name, bankCount }]` | `/v1/countries.json` |
+| `GET /v1/search?q=&limit=` | Match on code, bank name, or country. `limit` default 25, max 200 | — |
+| `GET /v1/dump` | All 33,593 records | `/v1/dump.json` |
+| `GET /v1/meta` | Dataset info | `/v1/meta.json` |
 
 CORS: `Access-Control-Allow-Origin: *`.
 
@@ -65,7 +74,9 @@ scripts/
   merge.py         data/swift-codes.json builder
   build-site.js    site/ builder
 site/            generated static output, not committed
-worker/          Cloudflare Worker source
+worker/
+  src/index.js     routing
+  src/landing.js   HTML landing page
 ```
 
 ## License
