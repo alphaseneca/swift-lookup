@@ -114,18 +114,30 @@ function queryCodes(url) {
   return paginated(page, { limit, offset, total: matches.length });
 }
 
-// Domestic institution directories (NRB for Nepal). ?country= is
-// required since there's no cross-country identifier space here, unlike
-// SWIFT codes.
+// Domestic institution directories (NRB for Nepal). ?country= narrows to
+// one country's directory; without it, searches across all of them
+// (currently just NP, but this stays correct as more are added).
 function queryInstitutions(url) {
   const country = (url.searchParams.get("country") || "").trim().toUpperCase();
-  if (!country) return fail("BAD_REQUEST", "missing ?country=", 400);
-  const all = institutionsByCountry.get(country);
-  if (!all) {
-    return fail("NOT_FOUND", `no institution directory for country "${country}"`, 404);
-  }
+  const q = (url.searchParams.get("q") || "").trim().toUpperCase();
   const { limit, offset } = parsePagination(url);
-  return paginated(all.slice(offset, offset + limit), { limit, offset, total: all.length });
+
+  let pool;
+  if (country) {
+    pool = institutionsByCountry.get(country);
+    if (!pool) return fail("NOT_FOUND", `no institution directory for country "${country}"`, 404);
+  } else {
+    pool = [...institutionsByCountry.values()].flat();
+  }
+
+  let matches = pool;
+  if (q) {
+    matches = matches.filter(
+      (i) => i.institutionCode.includes(q) || i.name.toUpperCase().includes(q)
+    );
+  }
+
+  return paginated(matches.slice(offset, offset + limit), { limit, offset, total: matches.length });
 }
 
 // Every bank in a country, SWIFT and domestic (NRB) combined into one
@@ -155,9 +167,13 @@ function queryCountryBanks(url, countryParam) {
   if (!countryByCode.has(country)) {
     return fail("NOT_FOUND", `no country found for code "${country}"`, 404);
   }
-  const all = unifiedBanks(country);
+  const q = (url.searchParams.get("q") || "").trim().toUpperCase();
+  let matches = unifiedBanks(country);
+  if (q) {
+    matches = matches.filter((b) => b.name.toUpperCase().includes(q) || b.code.includes(q));
+  }
   const { limit, offset } = parsePagination(url);
-  return paginated(all.slice(offset, offset + limit), { limit, offset, total: all.length });
+  return paginated(matches.slice(offset, offset + limit), { limit, offset, total: matches.length });
 }
 
 // ---------- routing ----------
@@ -168,11 +184,11 @@ function routeV1(url, parts) {
     return ok({
       name: "swiftlookup",
       endpoints: [
-        "GET /v1/countries/:code/banks      -> every bank in a country, SWIFT + domestic combined",
+        "GET /v1/countries/:code/banks?q=   -> every bank in a country, SWIFT + domestic combined",
         "GET /v1/codes/:code                -> single SWIFT/BIC code lookup",
         "GET /v1/codes?country=&q=&limit=&offset= -> list/search SWIFT/BIC codes only",
         "GET /v1/institutions/:code         -> single domestic institution lookup (NRB, Nepal only)",
-        "GET /v1/institutions?country=&limit=&offset= -> list domestic institutions only",
+        "GET /v1/institutions?country=&q=&limit=&offset= -> list/search domestic institutions only",
         "GET /v1/countries                  -> all countries",
         "GET /v1/countries/:code            -> single country info",
         "GET /v1/dump                       -> full SWIFT/BIC dataset, unpaginated",

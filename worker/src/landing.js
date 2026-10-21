@@ -16,11 +16,11 @@ export function renderLanding(meta) {
 <h1>swiftlookup</h1>
 <p>SWIFT/BIC code &rarr; bank name + country. ${meta.recordCount.toLocaleString()} records, ${meta.countryCount} countries.</p>
 <table>
-<tr><td><code>GET /v1/countries/:code/banks</code></td><td><b>Every bank in a country</b>, SWIFT + domestic combined</td></tr>
+<tr><td><code>GET /v1/countries/:code/banks?q=</code></td><td><b>Every bank in a country</b>, SWIFT + domestic combined, searchable</td></tr>
 <tr><td><code>GET /v1/codes/:code</code></td><td>Resolve a SWIFT/BIC code</td></tr>
 <tr><td><code>GET /v1/codes?country=&q=&limit=&offset=</code></td><td>List/search SWIFT/BIC codes only</td></tr>
 <tr><td><code>GET /v1/institutions/:code</code></td><td>Resolve a domestic institution code (NRB, Nepal only)</td></tr>
-<tr><td><code>GET /v1/institutions?country=&limit=&offset=</code></td><td>List domestic institutions only</td></tr>
+<tr><td><code>GET /v1/institutions?country=&q=&limit=&offset=</code></td><td>List/search domestic institutions only &mdash; name &rarr; code</td></tr>
 <tr><td><code>GET /v1/countries</code></td><td>All countries</td></tr>
 <tr><td><code>GET /v1/countries/:code</code></td><td>Single country info</td></tr>
 <tr><td><code>GET /v1/dump</code></td><td>Full SWIFT/BIC dataset, unpaginated</td></tr>

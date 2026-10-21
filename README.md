@@ -86,11 +86,11 @@ is a plain HTML landing page, not part of the API.
 | Method & path | Returns | Static equivalent |
 |---|---|---|
 | `GET /v1` | API info | — |
-| `GET /v1/countries/:code/banks` | **Every bank in a country**, SWIFT + NRB combined, paginated | `/v1/countries/<CC>/banks.json` |
+| `GET /v1/countries/:code/banks?q=` | **Every bank in a country**, SWIFT + NRB combined, searchable by name | `/v1/countries/<CC>/banks.json` |
 | `GET /v1/codes/:code` | `{ data: { swiftCode, bankCode, countryCode, country, bank } }` or 404 | `/v1/codes/<CODE>.json` |
 | `GET /v1/codes?country=&q=&limit=&offset=` | SWIFT/BIC only. No params → first page of everything | — |
 | `GET /v1/institutions/:code` | Domestic institution lookup (NRB, Nepal only) or 404 | `/v1/institutions/<CODE>.json` |
-| `GET /v1/institutions?country=&limit=&offset=` | Domestic institutions only. `country` required | `/v1/countries/<CC>/institutions.json` |
+| `GET /v1/institutions?country=&q=&limit=&offset=` | Domestic institutions only. Both params optional — `q` searches by name or code | `/v1/countries/<CC>/institutions.json` |
 | `GET /v1/countries` | `{ data: [{ code, name, bankCount, hasInstitutionDirectory }] }` | `/v1/countries.json` |
 | `GET /v1/countries/:code` | Single country info, same shape | `/v1/countries/<CC>.json` |
 | `GET /v1/dump` | `{ data: [...] }`, all 33,593 SWIFT/BIC records, unpaginated | `/v1/dump.json` |
