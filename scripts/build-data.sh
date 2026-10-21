@@ -16,15 +16,33 @@ ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT
 
+# GET $1 into $2, extra curl args in $3+. On a non-2xx, prints an
+# "::error::" annotation (visible via GitHub's public check-runs API, no
+# token needed to read it) with the status and response body, then exits.
+fetch() {
+  local url="$1" out="$2"
+  shift 2
+  local code
+  code=$(curl -s -L -m 30 -w "%{http_code}" -o "$out" "$@" "$url") || {
+    echo "::error::GET $url failed to connect (curl exit $?)"
+    exit 1
+  }
+  if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+    echo "::error::GET $url -> HTTP $code: $(head -c 300 "$out" | tr '\n' ' ')"
+    exit 1
+  fi
+}
+
 echo "Fetching latest lobax/banknames release metadata..."
 RELEASE_JSON="$WORK_DIR/release.json"
-# Unauthenticated api.github.com calls are capped at 60/hour per IP. GitHub
-# Actions runners share IP pools and exhaust that fast, so use GITHUB_TOKEN
-# (set automatically in Actions) when present to get the 5000/hour limit.
+# Unauthenticated api.github.com calls are capped at 60/hour per IP, shared
+# across all GitHub Actions runners. Use GITHUB_TOKEN (set automatically in
+# Actions) when present for the 5000/hour authenticated limit instead.
 if [ -n "${GITHUB_TOKEN:-}" ]; then
-  curl -sf -m 20 -H "Authorization: Bearer ${GITHUB_TOKEN}" "https://api.github.com/repos/lobax/banknames/releases/latest" -o "$RELEASE_JSON"
+  fetch "https://api.github.com/repos/lobax/banknames/releases/latest" "$RELEASE_JSON" \
+    -H "Authorization: Bearer ${GITHUB_TOKEN}"
 else
-  curl -sf -m 20 "https://api.github.com/repos/lobax/banknames/releases/latest" -o "$RELEASE_JSON"
+  fetch "https://api.github.com/repos/lobax/banknames/releases/latest" "$RELEASE_JSON"
 fi
 
 TAG=$(python3 -c "import json;print(json.load(open('$RELEASE_JSON'))['tag_name'])")
@@ -33,13 +51,12 @@ echo "  release: $TAG"
 echo "  asset:   $ZIP_URL"
 
 echo "Downloading bank name archive..."
-curl -sfL -m 60 -o "$WORK_DIR/banknames.zip" "$ZIP_URL"
+fetch "$ZIP_URL" "$WORK_DIR/banknames.zip"
 unzip -q -o "$WORK_DIR/banknames.zip" -d "$WORK_DIR/banknames"
 
 echo "Downloading ISO 3166-1 country names..."
-curl -sf -m 20 \
-  "https://raw.githubusercontent.com/lukes/ISO-3166-Countries-with-Regional-Codes/master/all/all.json" \
-  -o "$WORK_DIR/iso_countries.json"
+fetch "https://raw.githubusercontent.com/lukes/ISO-3166-Countries-with-Regional-Codes/master/all/all.json" \
+  "$WORK_DIR/iso_countries.json"
 
 echo "Merging into data/swift-codes.json..."
 python3 "$SCRIPT_DIR/merge.py" \
