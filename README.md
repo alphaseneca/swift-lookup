@@ -137,7 +137,7 @@ worker/          Cloudflare Worker source
 
 ## License
 
-Repo code: unlicensed (no license chosen yet).
+Repo code: MIT ([LICENSE](LICENSE)).
 
 | Source | License |
 |---|---|
