@@ -11,9 +11,9 @@ for (const r of records) {
   byCountry.get(r.countryCode).push(r);
 }
 
-// Country-specific domestic institution directories (NCHL codes, not
-// SWIFT/BIC). Currently just Nepal. Keyed by countryCode so adding
-// another country later is a map entry, not a new code path.
+// Country-specific domestic institution directories (NRB codes for
+// Nepal, not SWIFT/BIC). Keyed by countryCode so adding another country
+// later is a map entry, not a new code path.
 const institutionsByCountry = new Map([["NP", institutionsNp]]);
 const institutionByCode = new Map(institutionsNp.map((i) => [i.institutionCode, i]));
 
@@ -114,7 +114,7 @@ function queryCodes(url) {
   return paginated(page, { limit, offset, total: matches.length });
 }
 
-// Domestic institution directories (NCHL for Nepal). ?country= is
+// Domestic institution directories (NRB for Nepal). ?country= is
 // required since there's no cross-country identifier space here, unlike
 // SWIFT codes.
 function queryInstitutions(url) {
@@ -128,11 +128,12 @@ function queryInstitutions(url) {
   return paginated(all.slice(offset, offset + limit), { limit, offset, total: all.length });
 }
 
-// Every bank in a country, SWIFT and NCHL combined into one shape, so a
-// client doesn't need to know which code system(s) a country has or call
-// two endpoints. Not deduplicated: an institution with both a SWIFT code
-// and an NCHL code (common for commercial banks) appears twice, once per
-// system, because we have no verified crosswalk between the two.
+// Every bank in a country, SWIFT and domestic (NRB) combined into one
+// shape, so a client doesn't need to know which code system(s) a country
+// has or call two endpoints. Not deduplicated: an institution with both
+// a SWIFT code and an NRB code (common for commercial banks) appears
+// twice, once per system, because we have no verified crosswalk between
+// the two.
 function unifiedBanks(country) {
   const swift = (byCountry.get(country) || []).map((r) => ({
     name: r.bank,
@@ -140,13 +141,13 @@ function unifiedBanks(country) {
     codeSystem: "SWIFT",
     code: r.swiftCode,
   }));
-  const nchl = (institutionsByCountry.get(country) || []).map((i) => ({
+  const domestic = (institutionsByCountry.get(country) || []).map((i) => ({
     name: i.name,
     countryCode: i.countryCode,
-    codeSystem: "NCHL",
+    codeSystem: i.codeSystem,
     code: i.institutionCode,
   }));
-  return [...swift, ...nchl];
+  return [...swift, ...domestic];
 }
 
 function queryCountryBanks(url, countryParam) {
@@ -170,7 +171,7 @@ function routeV1(url, parts) {
         "GET /v1/countries/:code/banks      -> every bank in a country, SWIFT + domestic combined",
         "GET /v1/codes/:code                -> single SWIFT/BIC code lookup",
         "GET /v1/codes?country=&q=&limit=&offset= -> list/search SWIFT/BIC codes only",
-        "GET /v1/institutions/:code         -> single domestic institution lookup (NCHL, Nepal only)",
+        "GET /v1/institutions/:code         -> single domestic institution lookup (NRB, Nepal only)",
         "GET /v1/institutions?country=&limit=&offset= -> list domestic institutions only",
         "GET /v1/countries                  -> all countries",
         "GET /v1/countries/:code            -> single country info",

@@ -53,16 +53,24 @@ with its own identifier scheme. Currently covers Nepal only.
 | | |
 |---|---|
 | Country | Nepal (`NP`) |
-| Records | 53 |
-| Source | [NCHL](https://nchl.com.np) member/branch list (nchl.com.np) |
-| Code system | NCHL 4-digit bank code, prefixed with country (`institutionCode`, e.g. `NP0101`) — **not** SWIFT/BIC |
-| Coverage | Commercial banks, development banks, finance companies. **Not** microfinance institutions (not members of NCHL's cheque-clearing network) — roughly 50 of Nepal's ~103 licensed BFIs are missing for that reason. |
+| Records | 103 |
+| Source | [Nepal Rastra Bank](https://www.nrb.org.np/bank-list/) (the central bank itself) |
+| Code system | NRB's own numeric institution code, prefixed with country (`institutionCode`, e.g. `NP11001`) — **not** SWIFT/BIC |
+| Coverage | All 4 licensed BFI classes: A=commercial (20), B=development (17), C=finance (16), D=microfinance (50). Matches NRB's published totals exactly. |
 
 Record shape:
 
 ```json
-{"institutionCode":"NP0101","bankCode":"0101","shortName":"NBL","name":"Nepal Bank Ltd.","countryCode":"NP","codeSystem":"NCHL"}
+{"institutionCode":"NP11001","nrbCode":"11001","name":"Nepal Bank Limited","class":"A","countryCode":"NP","codeSystem":"NRB"}
 ```
+
+An earlier version of this used NCHL's (the clearing house's) member list
+instead, which only covers classes A–C (53 institutions) — NCHL has no
+microfinance members in either of its clearing systems. NRB's own list,
+pulled from the same page's HTML `<select>`, is the complete and
+authoritative one. NRB's dropdown also lists non-BFI categories (payment
+service providers, foreign banks, leasing companies, etc.) which are
+deliberately excluded here — different regulatory population.
 
 Adding another country means a new `build-<cc>-institutions.py` script
 (format differs per regulator/clearing house — there's no standard) and
@@ -78,10 +86,10 @@ is a plain HTML landing page, not part of the API.
 | Method & path | Returns | Static equivalent |
 |---|---|---|
 | `GET /v1` | API info | — |
-| `GET /v1/countries/:code/banks` | **Every bank in a country**, SWIFT + NCHL combined, paginated | `/v1/countries/<CC>/banks.json` |
+| `GET /v1/countries/:code/banks` | **Every bank in a country**, SWIFT + NRB combined, paginated | `/v1/countries/<CC>/banks.json` |
 | `GET /v1/codes/:code` | `{ data: { swiftCode, bankCode, countryCode, country, bank } }` or 404 | `/v1/codes/<CODE>.json` |
 | `GET /v1/codes?country=&q=&limit=&offset=` | SWIFT/BIC only. No params → first page of everything | — |
-| `GET /v1/institutions/:code` | Domestic institution lookup (NCHL, Nepal only) or 404 | `/v1/institutions/<CODE>.json` |
+| `GET /v1/institutions/:code` | Domestic institution lookup (NRB, Nepal only) or 404 | `/v1/institutions/<CODE>.json` |
 | `GET /v1/institutions?country=&limit=&offset=` | Domestic institutions only. `country` required | `/v1/countries/<CC>/institutions.json` |
 | `GET /v1/countries` | `{ data: [{ code, name, bankCount, hasInstitutionDirectory }] }` | `/v1/countries.json` |
 | `GET /v1/countries/:code` | Single country info, same shape | `/v1/countries/<CC>.json` |
@@ -92,8 +100,8 @@ is a plain HTML landing page, not part of the API.
 in country X" — it merges `/v1/codes?country=X` and
 `/v1/institutions?country=X` into one list, each entry shaped
 `{ name, countryCode, codeSystem, code }` where `codeSystem` is `"SWIFT"`
-or `"NCHL"`. **Not deduplicated**: a bank holding both a SWIFT code and an
-NCHL code (common for Nepal's commercial banks) appears once per system,
+or `"NRB"`. **Not deduplicated**: a bank holding both a SWIFT code and an
+NRB code (common for Nepal's commercial banks) appears once per system,
 since there's no verified crosswalk between the two identifier spaces.
 The two underlying endpoints stay available separately for consumers who
 only want one code system.
@@ -120,10 +128,9 @@ data/            committed, refreshed by build-data.sh
   swift-codes.json, meta.json
   institutions-np.json
 scripts/
-  build-data.sh             fetch + merge + build site (self-installs a
-                             throwaway Python venv for pdfplumber)
+  build-data.sh             fetch + merge + build site
   merge.py                  data/swift-codes.json builder
-  build-np-institutions.py  data/institutions-np.json builder
+  build-np-institutions.py  data/institutions-np.json builder (stdlib only)
   build-site.js             site/ builder
 site/            generated static output, not committed
 worker/
@@ -139,4 +146,4 @@ Repo code: MIT ([LICENSE](LICENSE)).
 |---|---|
 | [lobax/banknames](https://github.com/lobax/banknames) | MIT |
 | [ISO-3166-Countries-with-Regional-Codes](https://github.com/lukes/ISO-3166-Countries-with-Regional-Codes) | MIT |
-| [NCHL](https://nchl.com.np) member/branch list | public, no explicit license stated |
+| [Nepal Rastra Bank](https://www.nrb.org.np/bank-list/) BFI list | public, no explicit license stated |

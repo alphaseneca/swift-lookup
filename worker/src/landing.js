@@ -19,16 +19,16 @@ export function renderLanding(meta) {
 <tr><td><code>GET /v1/countries/:code/banks</code></td><td><b>Every bank in a country</b>, SWIFT + domestic combined</td></tr>
 <tr><td><code>GET /v1/codes/:code</code></td><td>Resolve a SWIFT/BIC code</td></tr>
 <tr><td><code>GET /v1/codes?country=&q=&limit=&offset=</code></td><td>List/search SWIFT/BIC codes only</td></tr>
-<tr><td><code>GET /v1/institutions/:code</code></td><td>Resolve a domestic institution code (NCHL, Nepal only)</td></tr>
+<tr><td><code>GET /v1/institutions/:code</code></td><td>Resolve a domestic institution code (NRB, Nepal only)</td></tr>
 <tr><td><code>GET /v1/institutions?country=&limit=&offset=</code></td><td>List domestic institutions only</td></tr>
 <tr><td><code>GET /v1/countries</code></td><td>All countries</td></tr>
 <tr><td><code>GET /v1/countries/:code</code></td><td>Single country info</td></tr>
 <tr><td><code>GET /v1/dump</code></td><td>Full SWIFT/BIC dataset, unpaginated</td></tr>
 <tr><td><code>GET /v1/meta</code></td><td>Dataset info</td></tr>
 </table>
-<p>SWIFT/BIC and NCHL are different identifier systems (international vs.
-domestic Nepal). <code>/v1/countries/:code/banks</code> combines them but
-doesn't deduplicate &mdash; a bank with both appears twice, tagged by
+<p>SWIFT/BIC and NRB codes are different identifier systems (international
+vs. domestic Nepal). <code>/v1/countries/:code/banks</code> combines them
+but doesn't deduplicate &mdash; a bank with both appears twice, tagged by
 <code>codeSystem</code>.</p>
 <footer>
   By <a href="https://github.com/alphaseneca">alphaseneca</a>.

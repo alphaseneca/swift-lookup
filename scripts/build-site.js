@@ -43,8 +43,8 @@ for (const r of records) {
   byCountry.get(r.countryCode).push(r);
 }
 
-// Country-specific domestic institution directories (NCHL codes, not
-// SWIFT/BIC). Currently just Nepal.
+// Country-specific domestic institution directories (NRB codes for
+// Nepal, not SWIFT/BIC). Currently just Nepal.
 const institutionsByCountry = new Map([["NP", institutionsNp]]);
 
 const toUnified = (country) => [
@@ -57,7 +57,7 @@ const toUnified = (country) => [
   ...(institutionsByCountry.get(country) || []).map((i) => ({
     name: i.name,
     countryCode: i.countryCode,
-    codeSystem: "NCHL",
+    codeSystem: i.codeSystem,
     code: i.institutionCode,
   })),
 ];
@@ -123,12 +123,12 @@ fs.writeFileSync(
 <tr><td><code>GET /v1/dump.json</code></td><td>all ${records.length} SWIFT/BIC records</td></tr>
 <tr><td><code>GET /v1/meta.json</code></td><td>dataset info</td></tr>
 </table>
-<p>Nepal only, separate from SWIFT &mdash; domestic NCHL institution codes (${institutionsNp.length} banks/finance companies, not microfinance):</p>
+<p>Nepal only, separate from SWIFT &mdash; Nepal Rastra Bank's own institution codes, all 4 BFI classes (${institutionsNp.length} banks/finance companies/microfinance):</p>
 <table>
-<tr><td><code>GET /v1/institutions/&lt;CODE&gt;.json</code></td><td>e.g. <a href="v1/institutions/NP0101.json">v1/institutions/NP0101.json</a></td></tr>
+<tr><td><code>GET /v1/institutions/&lt;CODE&gt;.json</code></td><td>e.g. <a href="v1/institutions/NP11001.json">v1/institutions/NP11001.json</a></td></tr>
 <tr><td><code>GET /v1/countries/NP/institutions.json</code></td><td>all ${institutionsNp.length} Nepal institutions</td></tr>
 </table>
-<p>SWIFT/BIC and NCHL are different identifier systems. The combined
+<p>SWIFT/BIC and NRB codes are different identifier systems. The combined
 <code>banks.json</code> doesn't deduplicate &mdash; a bank with both
 appears twice, tagged by <code>codeSystem</code>.</p>
 <footer>
