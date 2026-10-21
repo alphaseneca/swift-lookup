@@ -1,0 +1,12 @@
+{
+  "name": "swift-bank-api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SWIFT/BIC code to bank name lookup data, with a Cloudflare Worker API and a static JSON mirror.",
+  "scripts": {
+    "build-data": "bash scripts/build-data.sh"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

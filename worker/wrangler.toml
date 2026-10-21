@@ -1,0 +1,11 @@
+name = "swift-lookup"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+[[ratelimits]]
+name = "RATE_LIMITER"
+namespace_id = "1001"
+
+  [ratelimits.simple]
+  limit = 1200
+  period = 60
