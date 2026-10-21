@@ -140,26 +140,36 @@ function queryInstitutions(url) {
   return paginated(matches.slice(offset, offset + limit), { limit, offset, total: matches.length });
 }
 
-// Every bank in a country, SWIFT and domestic (NRB) combined into one
-// shape, so a client doesn't need to know which code system(s) a country
-// has or call two endpoints. Not deduplicated: an institution with both
-// a SWIFT code and an NRB code (common for commercial banks) appears
-// twice, once per system, because we have no verified crosswalk between
-// the two.
+// Every bank in a country, one row each, whether it has a SWIFT code, a
+// domestic (e.g. NRB) code, or both -- institutions carry their own
+// swiftCode when a hand-verified crosswalk set one (see
+// build-np-institutions.py), so this just has to avoid listing that same
+// SWIFT record a second time. Anything left in the SWIFT data with no
+// institution claiming it (e.g. a bank absent from the domestic
+// regulator's current list) still shows up, institutionCode: null.
 function unifiedBanks(country) {
-  const swift = (byCountry.get(country) || []).map((r) => ({
-    name: r.bank,
-    countryCode: r.countryCode,
-    codeSystem: "SWIFT",
-    code: r.swiftCode,
-  }));
-  const domestic = (institutionsByCountry.get(country) || []).map((i) => ({
+  const domestic = institutionsByCountry.get(country) || [];
+  const claimedSwiftCodes = new Set(domestic.map((i) => i.swiftCode).filter(Boolean));
+
+  const fromInstitutions = domestic.map((i) => ({
     name: i.name,
     countryCode: i.countryCode,
-    codeSystem: i.codeSystem,
-    code: i.institutionCode,
+    institutionCode: i.institutionCode,
+    swiftCode: i.swiftCode || null,
+    class: i.class,
   }));
-  return [...swift, ...domestic];
+
+  const orphanSwift = (byCountry.get(country) || [])
+    .filter((r) => !claimedSwiftCodes.has(r.swiftCode))
+    .map((r) => ({
+      name: r.bank,
+      countryCode: r.countryCode,
+      institutionCode: null,
+      swiftCode: r.swiftCode,
+      class: null,
+    }));
+
+  return [...fromInstitutions, ...orphanSwift];
 }
 
 function queryCountryBanks(url, countryParam) {
@@ -170,7 +180,12 @@ function queryCountryBanks(url, countryParam) {
   const q = (url.searchParams.get("q") || "").trim().toUpperCase();
   let matches = unifiedBanks(country);
   if (q) {
-    matches = matches.filter((b) => b.name.toUpperCase().includes(q) || b.code.includes(q));
+    matches = matches.filter(
+      (b) =>
+        b.name.toUpperCase().includes(q) ||
+        (b.swiftCode && b.swiftCode.includes(q)) ||
+        (b.institutionCode && b.institutionCode.includes(q))
+    );
   }
   const { limit, offset } = parsePagination(url);
   return paginated(matches.slice(offset, offset + limit), { limit, offset, total: matches.length });

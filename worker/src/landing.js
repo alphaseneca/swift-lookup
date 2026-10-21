@@ -27,9 +27,10 @@ export function renderLanding(meta) {
 <tr><td><code>GET /v1/meta</code></td><td>Dataset info</td></tr>
 </table>
 <p>SWIFT/BIC and NRB codes are different identifier systems (international
-vs. domestic Nepal). <code>/v1/countries/:code/banks</code> combines them
-but doesn't deduplicate &mdash; a bank with both appears twice, tagged by
-<code>codeSystem</code>.</p>
+vs. domestic Nepal). <code>/v1/countries/:code/banks</code> returns one
+row per bank &mdash; <code>{ name, institutionCode, swiftCode, class }</code>,
+either field <code>null</code> when that bank has no code in that system.
+A hand-verified crosswalk (not name-matching) is what makes this exact.</p>
 <footer>
   By <a href="https://github.com/alphaseneca">alphaseneca</a>.
   Data: <a href="https://github.com/lobax/banknames">lobax/banknames</a>, from the ISO 9362 Registration Authority's public BIC directory.

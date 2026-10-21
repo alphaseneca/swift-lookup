@@ -47,20 +47,33 @@ for (const r of records) {
 // Nepal, not SWIFT/BIC). Currently just Nepal.
 const institutionsByCountry = new Map([["NP", institutionsNp]]);
 
-const toUnified = (country) => [
-  ...(byCountry.get(country) || []).map((r) => ({
-    name: r.bank,
-    countryCode: r.countryCode,
-    codeSystem: "SWIFT",
-    code: r.swiftCode,
-  })),
-  ...(institutionsByCountry.get(country) || []).map((i) => ({
+// One row per bank: institutions carry their own swiftCode when a
+// hand-verified crosswalk set one, so this only has to add the SWIFT
+// records no institution has already claimed.
+const toUnified = (country) => {
+  const domestic = institutionsByCountry.get(country) || [];
+  const claimedSwiftCodes = new Set(domestic.map((i) => i.swiftCode).filter(Boolean));
+
+  const fromInstitutions = domestic.map((i) => ({
     name: i.name,
     countryCode: i.countryCode,
-    codeSystem: i.codeSystem,
-    code: i.institutionCode,
-  })),
-];
+    institutionCode: i.institutionCode,
+    swiftCode: i.swiftCode || null,
+    class: i.class,
+  }));
+
+  const orphanSwift = (byCountry.get(country) || [])
+    .filter((r) => !claimedSwiftCodes.has(r.swiftCode))
+    .map((r) => ({
+      name: r.bank,
+      countryCode: r.countryCode,
+      institutionCode: null,
+      swiftCode: r.swiftCode,
+      class: null,
+    }));
+
+  return [...fromInstitutions, ...orphanSwift];
+};
 
 const allCountryCodes = new Set([...byCountry.keys(), ...institutionsByCountry.keys()]);
 const countryList = [];
@@ -129,8 +142,10 @@ fs.writeFileSync(
 <tr><td><code>GET /v1/countries/NP/institutions.json</code></td><td>all ${institutionsNp.length} Nepal institutions</td></tr>
 </table>
 <p>SWIFT/BIC and NRB codes are different identifier systems. The combined
-<code>banks.json</code> doesn't deduplicate &mdash; a bank with both
-appears twice, tagged by <code>codeSystem</code>.</p>
+<code>banks.json</code> returns one row per bank &mdash;
+<code>{ name, institutionCode, swiftCode, class }</code>, either code
+field <code>null</code> when that bank has none in that system. A
+hand-verified crosswalk (not name-matching) is what makes this exact.</p>
 <footer>
   By <a href="https://github.com/alphaseneca">alphaseneca</a>.
   Data: <a href="https://github.com/lobax/banknames">lobax/banknames</a>, from the ISO 9362 Registration Authority's public BIC directory.

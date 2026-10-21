@@ -61,8 +61,26 @@ with its own identifier scheme. Currently covers Nepal only.
 Record shape:
 
 ```json
-{"institutionCode":"NP11001","nrbCode":"11001","name":"Nepal Bank Limited","class":"A","countryCode":"NP","codeSystem":"NRB"}
+{"institutionCode":"NP11001","nrbCode":"11001","name":"Nepal Bank Limited","class":"A","countryCode":"NP","codeSystem":"NRB","swiftCode":"NEBLNP"}
 ```
+
+`swiftCode` is `null` for the ~80% of institutions with no SWIFT presence
+(all of class B/C/D). For the 20 that have one, it comes from a **hand-
+verified, one-to-one crosswalk** in `build-np-institutions.py`
+(`SWIFT_CROSSWALK`), not a name-matching algorithm — automated matching
+was tried and rejected: it produced false positives (e.g. "Global IME
+Bank" matching its own unrelated "Global IME Laghubitta" microfinance
+subsidiary on a shared word) and missed real matches ("Agricultural
+Development Bank" vs. NRB's "Agriculture Development Bank"). A wrong
+automated match would silently attach the wrong bank's SWIFT code —
+worse than not having one.
+
+3 of Nepal's 23 SWIFT entries have no NRB counterpart and stay
+SWIFT-only (`institutionCode: null` in the combined view below):
+`NRBLNP` (the central bank doesn't license itself), `SECTNP` (not a
+bank), and `KDBLNP` (Kasthamandap Development Bank — has a real SWIFT
+code but is genuinely absent from NRB's current list; possibly
+renamed/merged, or NRB's list is incomplete — worth re-checking later).
 
 An earlier version of this used NCHL's (the clearing house's) member list
 instead, which only covers classes A–C (53 institutions) — NCHL has no
@@ -72,9 +90,13 @@ authoritative one. NRB's dropdown also lists non-BFI categories (payment
 service providers, foreign banks, leasing companies, etc.) which are
 deliberately excluded here — different regulatory population.
 
-Adding another country means a new `build-<cc>-institutions.py` script
-(format differs per regulator/clearing house — there's no standard) and
-one entry in the Worker's `institutionsByCountry` map.
+Adding another country: check its central bank first — every country
+has one, and it's the same kind of authoritative source NRB is for
+Nepal. Build a new `build-<cc>-institutions.py` script (format differs
+per regulator, there's no standard) plus that country's own hand-
+verified SWIFT crosswalk, and add one entry to the Worker's
+`institutionsByCountry` map. Don't write a generic fuzzy-matching
+algorithm — same reasoning as above.
 
 ## API
 
@@ -97,12 +119,17 @@ is a plain HTML landing page, not part of the API.
 | `GET /v1/meta` | `{ data: {...} }` | `/v1/meta.json` |
 
 `/v1/countries/:code/banks` is the one to use for "give me all the banks
-in country X" — it merges `/v1/codes?country=X` and
-`/v1/institutions?country=X` into one list, each entry shaped
-`{ name, countryCode, codeSystem, code }` where `codeSystem` is `"SWIFT"`
-or `"NRB"`. **Not deduplicated**: a bank holding both a SWIFT code and an
-NRB code (common for Nepal's commercial banks) appears once per system,
-since there's no verified crosswalk between the two identifier spaces.
+in country X" — **one row per bank**, not one per code system:
+
+```json
+{"name":"Nabil Bank Limited","countryCode":"NP","institutionCode":"NP11003","swiftCode":"NARBNP","class":"A"}
+```
+
+`institutionCode` and `swiftCode` are each `null` when that bank has no
+code in that system. For a country with no domestic directory (anything
+but Nepal right now), every row is just the SWIFT side,
+`institutionCode: null`. This is correctness-critical, not cosmetic: it
+depends on the hand-verified crosswalk above, not guesswork.
 The two underlying endpoints stay available separately for consumers who
 only want one code system.
 
