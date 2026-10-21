@@ -55,8 +55,6 @@ CORS: `Access-Control-Allow-Origin: *`.
 Rate limit (Worker only): 1,200 req / 60s per IP (`CF-Connecting-IP`).
 Over limit → `429` + `Retry-After: 60`. Approximate, not a hard global cap.
 
-Deployment: [docs/deploy.md](docs/deploy.md).
-
 ## Layout
 
 ```
@@ -68,7 +66,6 @@ scripts/
   build-site.js    site/ builder
 site/            generated static output, not committed
 worker/          Cloudflare Worker source
-docs/deploy.md   deployment steps
 ```
 
 ## License
