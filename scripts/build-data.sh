@@ -72,6 +72,21 @@ echo "Building Nepal institution directory (NRB, separate from SWIFT)..."
 python3 "$SCRIPT_DIR/build-np-institutions.py" \
   --out "$ROOT_DIR/data/institutions-np.json"
 
+# build-np-institutions.py already checks its SWIFT_CROSSWALK's nrbCode
+# keys are still in NRB's list. Check the other side here, now that both
+# files exist: every crosswalk swiftCode value must still resolve in
+# swift-codes.json, or a hand-verified mapping could silently start
+# pointing at a SWIFT code lobax/banknames has since dropped/renamed.
+python3 -c "
+import json, sys
+inst = json.load(open('$ROOT_DIR/data/institutions-np.json'))
+swift_codes = {r['swiftCode'] for r in json.load(open('$ROOT_DIR/data/swift-codes.json'))}
+stale = [i['swiftCode'] for i in inst if i['swiftCode'] and i['swiftCode'] not in swift_codes]
+if stale:
+    print(f'::error::SWIFT_CROSSWALK references swiftCode(s) no longer in swift-codes.json: {stale}. lobax/banknames changed -- re-verify the crosswalk by hand.', file=sys.stderr)
+    sys.exit(1)
+"
+
 echo "Generating static site..."
 node "$SCRIPT_DIR/build-site.js" "$ROOT_DIR/data/swift-codes.json" "$ROOT_DIR/data/meta.json" \
   "$ROOT_DIR/data/institutions-np.json" "$ROOT_DIR/site"

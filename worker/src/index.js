@@ -1,5 +1,6 @@
 import records from "../../data/swift-codes.json";
 import institutionsNp from "../../data/institutions-np.json";
+import meta from "../../data/meta.json";
 import { renderLanding } from "./landing.js";
 
 const byCode = new Map();
@@ -17,23 +18,27 @@ for (const r of records) {
 const institutionsByCountry = new Map([["NP", institutionsNp]]);
 const institutionByCode = new Map(institutionsNp.map((i) => [i.institutionCode, i]));
 
-const countryList = [...byCountry.entries()]
-  .map(([code, banks]) => ({
-    code,
-    name: banks[0].country,
-    bankCount: banks.length,
-    hasInstitutionDirectory: institutionsByCountry.has(code),
-  }))
+// Union of both sources: a country can have an institution directory
+// with zero SWIFT codes (not true for Nepal today, but must not 404 on
+// /v1/countries/:code or /v1/countries/:code/banks when it happens).
+const allCountryCodes = new Set([...byCountry.keys(), ...institutionsByCountry.keys()]);
+const countryList = [...allCountryCodes]
+  .map((code) => {
+    const banks = byCountry.get(code) || [];
+    return {
+      code,
+      name: banks[0]?.country ?? code,
+      bankCount: banks.length,
+      hasInstitutionDirectory: institutionsByCountry.has(code),
+    };
+  })
   .sort((a, b) => a.code.localeCompare(b.code));
 const countryByCode = new Map(countryList.map((c) => [c.code, c]));
 
-const META = {
-  author: "alphaseneca",
-  dataSource: "ISO 9362 Registration Authority (iso9362.org), via lobax/banknames (MIT)",
-  recordCount: records.length,
-  countryCount: countryList.length,
-  swiftCodeFormat: "bankCode(4) + countryCode(2): first 6 chars of any SWIFT/BIC code",
-};
+// Spread data/meta.json rather than hand-duplicating its fields, so this
+// can't silently drift from what merge.py actually produces (it did:
+// builtAt was missing here until this fix).
+const META = { ...meta, recordCount: records.length, countryCount: countryList.length };
 
 const RATE_LIMIT = { limit: 1200, periodSeconds: 60 };
 const MAX_LIMIT = 200;
@@ -54,7 +59,7 @@ function paginated(data, { limit, offset, total }, extraHeaders = {}) {
 }
 
 function fail(code, message, status, extraHeaders = {}) {
-  return send({ error: { code, message } }, status, extraHeaders);
+  return send({ error: { code, message } }, status, { "Cache-Control": "no-store", ...extraHeaders });
 }
 
 function send(body, status, extraHeaders = {}) {
@@ -83,12 +88,14 @@ function lookupCode(code) {
   return byCode.get(normalized.slice(0, 6)) || null;
 }
 
+// parseInt(...) || DEFAULT would silently turn an explicit ?limit=0 into
+// 25, since 0 is falsy -- check for NaN specifically instead, so only a
+// missing/unparseable value falls back to the default.
 function parsePagination(url) {
-  const limit = Math.min(
-    Math.max(parseInt(url.searchParams.get("limit") || String(DEFAULT_LIMIT), 10) || DEFAULT_LIMIT, 1),
-    MAX_LIMIT
-  );
-  const offset = Math.max(parseInt(url.searchParams.get("offset") || "0", 10) || 0, 0);
+  const rawLimit = parseInt(url.searchParams.get("limit"), 10);
+  const limit = Math.min(Math.max(Number.isNaN(rawLimit) ? DEFAULT_LIMIT : rawLimit, 1), MAX_LIMIT);
+  const rawOffset = parseInt(url.searchParams.get("offset"), 10);
+  const offset = Math.max(Number.isNaN(rawOffset) ? 0 : rawOffset, 0);
   return { limit, offset };
 }
 
@@ -122,13 +129,13 @@ function queryInstitutions(url) {
   const q = (url.searchParams.get("q") || "").trim().toUpperCase();
   const { limit, offset } = parsePagination(url);
 
+  // country is a filter on a collection, not a resource path segment --
+  // matches queryCodes's behavior: an unknown/empty country is just a
+  // filter that matches nothing (200, empty page), not a 404. 404 is
+  // reserved for /v1/countries/:code, where the country IS the resource.
   let pool;
-  if (country) {
-    pool = institutionsByCountry.get(country);
-    if (!pool) return fail("NOT_FOUND", `no institution directory for country "${country}"`, 404);
-  } else {
-    pool = [...institutionsByCountry.values()].flat();
-  }
+  if (country) pool = institutionsByCountry.get(country) || [];
+  else pool = [...institutionsByCountry.values()].flat();
 
   let matches = pool;
   if (q) {
@@ -266,11 +273,12 @@ export default {
         headers: {
           "Access-Control-Allow-Origin": "*",
           "Access-Control-Allow-Methods": "GET, OPTIONS",
+          "Access-Control-Max-Age": "86400", // lets the browser skip repeat preflights for a day
         },
       });
     }
     if (request.method !== "GET") {
-      return fail("METHOD_NOT_ALLOWED", `${request.method} is not supported`, 405);
+      return fail("METHOD_NOT_ALLOWED", `${request.method} is not supported`, 405, { Allow: "GET, OPTIONS" });
     }
 
     if (env.RATE_LIMITER) {

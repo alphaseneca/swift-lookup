@@ -134,8 +134,12 @@ depends on the hand-verified crosswalk above, not guesswork.
 The two underlying endpoints stay available separately for consumers who
 only want one code system.
 
-Dynamic-only equivalent of the static country-codes file:
-`GET /v1/codes?country=NP&limit=200`.
+`GET /v1/codes?country=NP&limit=200` gets the dynamic equivalent of the
+static per-country file in one call for Nepal (23 codes). It's **not**
+equivalent for a country with more than `MAX_LIMIT` (200) codes — GB has
+3,588, US has 3,508 — where the static file is genuinely unpaginated but
+the dynamic route needs multiple paginated requests (`offset` stepped by
+200) to reconstruct the full list.
 
 Errors: `{ error: { code, message } }` — `code` is one of `NOT_FOUND`,
 `BAD_REQUEST`, `METHOD_NOT_ALLOWED`, `RATE_LIMITED`.
