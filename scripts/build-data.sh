@@ -18,7 +18,14 @@ trap 'rm -rf "$WORK_DIR"' EXIT
 
 echo "Fetching latest lobax/banknames release metadata..."
 RELEASE_JSON="$WORK_DIR/release.json"
-curl -sf -m 20 "https://api.github.com/repos/lobax/banknames/releases/latest" -o "$RELEASE_JSON"
+# Unauthenticated api.github.com calls are capped at 60/hour per IP. GitHub
+# Actions runners share IP pools and exhaust that fast, so use GITHUB_TOKEN
+# (set automatically in Actions) when present to get the 5000/hour limit.
+if [ -n "${GITHUB_TOKEN:-}" ]; then
+  curl -sf -m 20 -H "Authorization: Bearer ${GITHUB_TOKEN}" "https://api.github.com/repos/lobax/banknames/releases/latest" -o "$RELEASE_JSON"
+else
+  curl -sf -m 20 "https://api.github.com/repos/lobax/banknames/releases/latest" -o "$RELEASE_JSON"
+fi
 
 TAG=$(python3 -c "import json;print(json.load(open('$RELEASE_JSON'))['tag_name'])")
 ZIP_URL=$(python3 -c "import json;d=json.load(open('$RELEASE_JSON'));print([a['browser_download_url'] for a in d['assets'] if a['name'].endswith('.zip')][0])")

@@ -13,8 +13,8 @@ SWIFT/BIC code → bank name + country.
 | Country names | [ISO-3166-Countries-with-Regional-Codes](https://github.com/lukes/ISO-3166-Countries-with-Regional-Codes) (MIT) |
 
 SWIFT/BIC format: `BANK(4) + COUNTRY(2) + LOCATION(2) [+ BRANCH(3)]`.
-This dataset keys on the first 6 characters (`BANK + COUNTRY`). Any 6, 8,
-or 11-character code resolves by its first 6 characters.
+Dataset keys on the first 6 characters (`BANK + COUNTRY`). Any 6, 8, or
+11-character code resolves by its first 6 characters.
 
 Record shape:
 
@@ -22,16 +22,13 @@ Record shape:
 {"swiftCode":"DEUTDE","bankCode":"DEUT","countryCode":"DE","country":"Germany","bank":"DEUTSCHE BANK AG"}
 ```
 
-### Limits
+Limits:
 
 - 1 name per `bankCode+countryCode`. If a code maps to multiple entities
-  upstream, only the first is kept. Example: `DEUTDE` → one specific
-  Deutsche Bank entity, not necessarily the one you expect if that bank
-  code is shared.
-- Upstream last rebuilt 2026-07-01 (`v26.7`). Its monthly auto-rebuild has
-  not run since.
-- No city/branch-level data. A second dataset was checked for this and
-  rejected: single commit, no license, no source.
+  upstream, only the first is kept.
+- Upstream last rebuilt 2026-07-01 (`v26.7`). Monthly auto-rebuild has not
+  run since.
+- No city/branch-level data.
 
 Refresh:
 
@@ -39,89 +36,26 @@ Refresh:
 npm run build-data
 ```
 
-## Worker API
+## API
 
-`worker/` — Cloudflare Worker. Dataset is bundled into the script (4.7 MB
-raw / ~0.8 MB gzip; Workers allow 64 MB uncompressed per script, all
-plans).
+Served two ways: `worker/` (Cloudflare Worker, dynamic) and `site/`
+(pre-generated static JSON files, no query params).
 
-| Method & path | Returns |
-|---|---|
-| `GET /:code` | `{ swiftCode, bankCode, countryCode, country, bank }` or 404 |
-| `GET /country/:code` | Banks in a country (ISO 3166-1 alpha-2) or 404 |
-| `GET /countries` | `[{ code, name, bankCount }]` |
-| `GET /search?q=&limit=` | Match on code, bank name, or country. `limit` default 25, max 200 |
-| `GET /dump` | All 33,593 records |
-| `GET /meta` | Dataset info |
+| Method & path | Returns | Static equivalent |
+|---|---|---|
+| `GET /:code` | `{ swiftCode, bankCode, countryCode, country, bank }` or 404 | `/<CODE>.json` |
+| `GET /country/:code` | Banks in a country (ISO 3166-1 alpha-2) or 404 | `/country/<CC>.json` |
+| `GET /countries` | `[{ code, name, bankCount }]` | `/countries.json` |
+| `GET /search?q=&limit=` | Match on code, bank name, or country. `limit` default 25, max 200 | — |
+| `GET /dump` | All 33,593 records | `/dump.json` |
+| `GET /meta` | Dataset info | `/meta.json` |
 
-CORS: `Access-Control-Allow-Origin: *` on every response.
+CORS: `Access-Control-Allow-Origin: *`.
 
-### Rate limit
+Rate limit (Worker only): 1,200 req / 60s per IP (`CF-Connecting-IP`).
+Over limit → `429` + `Retry-After: 60`. Approximate, not a hard global cap.
 
-1,200 req / 60s per IP (`CF-Connecting-IP`). Cloudflare [Rate Limiting
-binding](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/).
-Over limit → `429` + `Retry-After: 60`.
-
-Approximate, not a hard global cap: per-PoP, eventually consistent.
-
-### Deploy
-
-```bash
-npm run build-data
-cd worker
-npx wrangler login
-npx wrangler deploy
-```
-
-Name: `swift-lookup` (`worker/wrangler.toml`) → `swift-lookup.<subdomain>.workers.dev`.
-
-Custom domain:
-
-```toml
-[[routes]]
-pattern = "swiftlookup.dev/*"
-custom_domain = true
-```
-
-Local dev: `npx wrangler dev`.
-
-## Static site
-
-`site/` — pre-generated JSON files. No query params; every path is a real
-file.
-
-```
-site/
-├── DEUTDE.json          { swiftCode, bankCode, countryCode, country, bank }
-├── country/NP.json       banks in Nepal
-├── countries.json        [{ code, name, bankCount }]
-├── dump.json             all records
-└── meta.json
-```
-
-No static `/search`. Fetch `dump.json` once, filter client-side.
-
-### GitHub Pages
-
-`.github/workflows/pages.yml` builds and deploys `site/` on push, monthly
-schedule, and manual dispatch.
-
-Setup: repo **Settings → Pages → Source → GitHub Actions**.
-
-URL: `https://<user>.github.io/<repo>/`.
-
-### Cloudflare Pages
-
-Dashboard: **Workers & Pages → Create → Pages** → connect repo. Build
-command `bash scripts/build-data.sh`, output dir `site`.
-
-CLI:
-
-```bash
-npx wrangler pages deploy site --project-name=swift-lookup
-```
-
-URL: `https://swift-lookup.pages.dev/`.
+Deployment: [docs/deploy.md](docs/deploy.md).
 
 ## Layout
 
@@ -133,6 +67,7 @@ scripts/
   build-site.js    site/ builder
 site/            generated static output
 worker/          Cloudflare Worker source
+docs/deploy.md   deployment steps
 ```
 
 ## License
