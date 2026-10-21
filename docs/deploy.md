@@ -2,16 +2,24 @@
 
 ## Worker
 
+`wrangler.toml` is at the repo root; `data/swift-codes.json` is committed
+(not generated at deploy time) so a plain git-connected build works with
+no custom build command.
+
+Manual:
+
 ```bash
-npm run build-data
-cd worker
 npx wrangler login
 npx wrangler deploy
 ```
 
-Name: `swift-lookup` (`worker/wrangler.toml`) → `swift-lookup.<subdomain>.workers.dev`.
+Git-connected (Cloudflare Workers Builds): connect the repo, leave root
+directory as `/`, deploy command `npx wrangler deploy` (default). No
+build command needed — the data file is already in the repo.
 
-Custom domain (`worker/wrangler.toml`):
+Name: `swift-lookup` (`wrangler.toml`) → `swift-lookup.<subdomain>.workers.dev`.
+
+Custom domain (`wrangler.toml`):
 
 ```toml
 [[routes]]
@@ -21,7 +29,12 @@ custom_domain = true
 
 Local dev: `npx wrangler dev`.
 
+To refresh the committed data before a deploy: `npm run build-data`, then
+commit `data/swift-codes.json`.
+
 ## Static site (`site/`)
+
+Not committed — built fresh each time from `data/`.
 
 ### GitHub Pages
 

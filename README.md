@@ -60,12 +60,13 @@ Deployment: [docs/deploy.md](docs/deploy.md).
 ## Layout
 
 ```
-data/            generated: swift-codes.json, meta.json
+wrangler.toml    Worker config (deploy runs from repo root)
+data/            swift-codes.json, meta.json — committed, refreshed by build-data.sh
 scripts/
   build-data.sh    fetch + merge + build site
   merge.py         data/swift-codes.json builder
   build-site.js    site/ builder
-site/            generated static output
+site/            generated static output, not committed
 worker/          Cloudflare Worker source
 docs/deploy.md   deployment steps
 ```

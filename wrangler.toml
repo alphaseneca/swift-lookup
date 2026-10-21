@@ -1,5 +1,5 @@
 name = "swift-lookup"
-main = "src/index.js"
+main = "worker/src/index.js"
 compatibility_date = "2026-10-01"
 
 [[ratelimits]]
