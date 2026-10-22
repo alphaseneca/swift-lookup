@@ -14,22 +14,23 @@ import { renderLanding } from "./landing.js";
 //   - NRB: national, issued by Nepal Rastra Bank (the central bank).
 //     Nepal-only, but covers every licensed domestic institution,
 //     including ones with no SWIFT presence at all.
-// A future country's own regulator is the same shape as NRB: national,
-// not a new concept. "SWIFT record" and "NRB record" are not two
-// unrelated resources, they're two possible labels on the one real
-// entity, which is why the API has a single Institution resource with a
-// `codes` map instead of parallel SWIFT-shaped and NRB-shaped endpoints.
+// A future country's own regulator follows the same shape as NRB:
+// national, not a new concept. A SWIFT record and an NRB record are not
+// separate resources -- they are two possible labels on one entity,
+// which is why the API exposes a single Institution resource with a
+// `codes` map rather than parallel SWIFT-shaped and NRB-shaped endpoints.
 //
-// What's actually generic when adding a system vs. what isn't:
-// - CODE_SYSTEMS_META, codeSystemIndexes, and lookupInstitution()'s
-//   dispatch loop are generic -- adding a system means adding one entry
-//   to CODE_SYSTEMS_META and one matcher to CODE_SYSTEM_MATCHERS below
-//   (its code format, e.g. exact vs. truncate-to-6-chars, which is
-//   inherently system-specific), never editing the loop itself.
-// - Merging a new country's source data into `institutions` (the
-//   fromNrb/fromSwiftOnly block below) is NOT generic and can't be:
-//   every regulator publishes differently, so each one needs its own
-//   merge code, the same way fromNrb is specific to NRB's shape.
+// Generic vs. not generic when adding a code system:
+// - Generic: CODE_SYSTEMS_META, codeSystemIndexes, and
+//   lookupInstitution()'s dispatch loop. Adding a system requires one
+//   entry in CODE_SYSTEMS_META and one matcher in CODE_SYSTEM_MATCHERS
+//   below (that system's code format -- exact match, truncate-to-6-
+//   chars, etc. -- which is inherently system-specific). The dispatch
+//   loop itself requires no changes.
+// - Not generic: merging a country's source data into `institutions`
+//   (the fromNrb/fromSwiftOnly block below). Each regulator publishes
+//   data differently, requiring its own merge code, as fromNrb is
+//   specific to NRB's data shape.
 
 const CODE_SYSTEMS_META = [
   { code: "SWIFT", name: "SWIFT/BIC", issuer: "ISO 9362 Registration Authority (iso9362.org)", scope: "global" },

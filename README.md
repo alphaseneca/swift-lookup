@@ -94,9 +94,10 @@ consistent), not a hard global cap. CORS is fully open
   arm), you may get a sibling entity's name. This is how the upstream
   registry data is structured, not a lookup bug.
 - SWIFT/NRB cross-referencing (the data behind `codes` having both keys)
-  is a **hand-verified, one-to-one mapping** for all 20 Nepali banks that
-  have both — not name-matching. Automated matching was tried and
-  produced real false positives, so it isn't used.
+  is a **hand-verified, one-to-one mapping** for the 20 Nepali
+  institutions that have both — not automated name-matching, which
+  produces false positives across unrelated institutions sharing a word
+  in their name.
 - No city/branch-level detail.
 
 ## License
@@ -114,13 +115,12 @@ once and filter client-side for search).
 | Dynamic | Static |
 |---|---|
 | `GET /v1/institutions/:code` | `GET /v1/institutions/<CODE>.json` |
-| `GET /v1/countries/:code/institutions` (via `?country=`) | `GET /v1/countries/<CC>/institutions.json` |
-| `GET /v1/countries/:code` | `GET /v1/countries/<CC>.json` |
+| `GET /v1/institutions?country=:code` — list of institutions | `GET /v1/countries/<CC>/institutions.json` |
+| `GET /v1/countries/:code` — country summary, not a list | `GET /v1/countries/<CC>.json` |
 | `GET /v1/countries` | `GET /v1/countries.json` |
 | `GET /v1/code-systems` | `GET /v1/code-systems.json` |
 | `GET /v1/dump` | `GET /v1/dump.json` |
 | `GET /v1/meta` | `GET /v1/meta.json` |
 | `GET /v1/openapi.json` | `GET /v1/openapi.json` |
 
-Running this yourself (building the data, deploying to a Worker, hosting
-the static mirror): [CONTRIBUTING.md](CONTRIBUTING.md). Changelog: [CHANGELOG.md](CHANGELOG.md).
+Building, deploying, and extending this: [CONTRIBUTING.md](CONTRIBUTING.md).

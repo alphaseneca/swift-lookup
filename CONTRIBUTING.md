@@ -66,60 +66,55 @@ default) — no build command needed, since `data/` is already committed.
 npx @redocly/cli lint site/v1/openapi.json
 ```
 
-Should always come back clean. If you add a route or response, add it
-to `worker/src/openapi.js` (the one source both delivery modes serve)
-and re-lint.
+Must pass with zero errors or warnings. If you add a route or
+response, add it to `worker/src/openapi.js` (the one source both
+delivery modes serve) and re-lint.
 
-## Design decisions worth knowing before you change something
+## Design reference
 
-**The Institution/CodeSystem model, not parallel per-system endpoints.**
-A bank is one `Institution` with a `codes` map (`{SWIFT, NRB, ...}`), not
-two unrelated records you have to merge yourself. This replaced an
-earlier version with separate `/v1/codes` and `/v1/institutions`
-endpoints plus a bolted-on `/v1/countries/:code/banks` to merge them —
-that accreted through incremental patches rather than being designed up
-front, and it showed (two result rows for one bank, redundant ways to
-get "banks in a country"). See CHANGELOG.md for the blow-by-blow.
+**Resource model.** A bank is one `Institution` record with a `codes`
+map (`{SWIFT, NRB, ...}`). Rationale: a bank's SWIFT code and national
+registry code identify the same entity; treating them as separate
+resources requires a dedicated endpoint to recombine them and produces
+duplicate rows for any institution that has both.
 
-**SWIFT↔NRB cross-referencing is a hand-verified, one-to-one table**
-(`SWIFT_CROSSWALK` in `build-np-institutions.py`), not computed by name-
-matching. Automated matching was tried and rejected: it produced real
-false positives (two different banks sharing one word in their name both
-matching) and missed real matches (spelling variants). A wrong automated
-match silently attaches the wrong bank's code — worse than not having
-one. `build-data.sh` validates both directions of the table (that every
-`nrbCode` is still in NRB's list, and every `swiftCode` is still in
-`swift-codes.json`) and fails the build if either goes stale.
+**SWIFT↔NRB cross-referencing** uses a hand-verified, one-to-one table
+(`SWIFT_CROSSWALK` in `build-np-institutions.py`), not automated name-
+matching. Rationale: name-matching produces false positives (distinct
+institutions sharing one word in their name) and misses matches
+(spelling variants between sources). An incorrect automated match
+silently attaches the wrong institution's code. `build-data.sh`
+validates both directions of the table on every build — that each
+`nrbCode` is still present in NRB's list, and each `swiftCode` is still
+present in `swift-codes.json` — and fails the build if either has gone
+stale.
 
-**Adding another country**: check its central bank or equivalent
-regulator first — every country has one, and it's the authoritative
-source the same way NRB is for Nepal (an intermediary like a clearing
-house may look complete and not be — NCHL's lists turned out to exclude
-microfinance entirely).
+**Adding a country**: use its central bank or equivalent regulator as
+the primary source. An intermediary such as a clearing house may have
+incomplete coverage — NRB's own list spans all 4 BFI classes; a
+clearing-house list for the same country omits microfinance
+institutions entirely.
 
-What's actually generic (no code change) vs. what isn't:
+Generic vs. not generic when adding a country:
 
-- `CODE_SYSTEMS_META`, `codeSystemIndexes`, and `lookupInstitution()`'s
-  dispatch loop in `worker/src/index.js` are generic. Add one entry to
-  `CODE_SYSTEMS_META`, one matcher to `CODE_SYSTEM_MATCHERS` describing
-  that system's code format (exact match, truncate-to-N-chars,
-  whatever it needs — this part is inherently system-specific, formats
-  differ by regulator), and the lookup/dispatch logic itself never
+- Generic (no code change required): `CODE_SYSTEMS_META`,
+  `codeSystemIndexes`, and `lookupInstitution()`'s dispatch loop in
+  `worker/src/index.js`. Add one entry to `CODE_SYSTEMS_META` and one
+  matcher to `CODE_SYSTEM_MATCHERS` (that system's code format — exact
+  match, truncate-to-N-chars, etc.); the dispatch loop requires no
   changes.
-- Merging that country's source data into the canonical `institutions`
-  array is **not** generic and can't be — every regulator publishes
-  differently, so it needs its own `build-<cc>-institutions.py` and its
-  own merge block (the `fromNrb`/`fromSwiftOnly` pattern), the same way
-  NRB's is specific to NRB's shape. If it also has SWIFT coverage, that
-  means a hand-verified crosswalk, same as Nepal's — never a generic
-  fuzzy-matching algorithm, same reasoning as above.
+- Not generic: merging a country's source data into the canonical
+  `institutions` array. Each regulator publishes data differently,
+  requiring its own `build-<cc>-institutions.py` and merge block,
+  following the `fromNrb`/`fromSwiftOnly` pattern. SWIFT cross-
+  referencing, if applicable, requires a hand-verified crosswalk per
+  the rule above, not an automated matching algorithm.
 
-**Why REST-ish JSON, not GraphQL/JSON:API/RPC.** Covered by an
-independent design review — see CHANGELOG.md. Short version: the static
-mirror can't serve arbitrary queries without a server, which rules out
-anything built around flexible client-shaped queries (GraphQL); the
-response shape is flat 3-5 field records with one real relationship
-(country → institutions), which doesn't justify JSON:API's linking/
-compound-document machinery; and every operation here is already a
-simple lookup or filter, which an RPC method-name layer wouldn't add
-capability to.
+**Response format.** REST-ish JSON with `{ data }` / `{ data,
+pagination }` / `{ error }` envelopes, not GraphQL, JSON:API, or RPC.
+Rationale: the static mirror serves precomputed files and cannot
+execute arbitrary queries, which rules out GraphQL's flexible client-
+shaped queries. Records are flat (3–5 fields) with one relationship
+(country → institutions), which does not justify JSON:API's linking/
+compound-document machinery. Every operation is a lookup or filter,
+which an RPC method-name layer would not add capability to.

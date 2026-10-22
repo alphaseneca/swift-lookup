@@ -23,29 +23,27 @@ code at all, since only commercial banks do their own cross-border
 correspondent banking.
 
 SWIFT_CROSSWALK below is a hand-verified, one-to-one mapping from NRB
-code to SWIFT code -- not computed by any name-matching algorithm.
-Naive automated name matching was tried and rejected: it produced false
+code to SWIFT code, checked by hand against both source lists as of
+2026-10-21. Automated name-matching is not used: it produces false
 positives (e.g. "Global IME Bank" and the unrelated "Global IME
-Laghubitta" microfinance subsidiary both matching on a shared word) and
-missed real matches (SWIFT says "Agricultural Development Bank",
-NRB says "Agriculture Development Bank"). Every entry below was checked
-by hand against both source lists as of 2026-10-21.
+Laghubitta" microfinance subsidiary match on a shared word) and misses
+real matches (SWIFT: "Agricultural Development Bank"; NRB: "Agriculture
+Development Bank").
 
-Verified NOT to exist in NRB's current list (so left SWIFT-only, with no
-institutionCode counterpart -- see worker/src/index.js's unifiedBanks):
-  - NRBLNP (Nepal Rastra Bank): the central bank regulates BFIs, it
-    doesn't list itself as one.
+Not present in NRB's current list, and therefore SWIFT-only with no
+institutionCode counterpart (see worker/src/index.js, CODE_SYSTEM_MATCHERS):
+  - NRBLNP (Nepal Rastra Bank): the central bank regulates BFIs; it is
+    not itself a licensed BFI.
   - SECTNP (Samsung Nepal Services Private Limited): not a bank.
-  - KDBLNP (Kasthamandap Development Bank): has a real SWIFT code but
-    is genuinely absent from NRB's dropdown -- possibly renamed/merged
-    since, or NRB's own list is incomplete. Worth re-checking later.
+  - KDBLNP (Kasthamandap Development Bank): holds a SWIFT code but is
+    absent from NRB's current list. Possibly renamed or merged since,
+    or NRB's list is incomplete; subject to re-verification.
 
-To add another country: the central bank (or equivalent regulator) is
-the right source to check first -- every country has one, and it's the
-authoritative list of licensed institutions, the same way NRB is for
-Nepal. Build that country's own hand-verified crosswalk the same way;
-don't write a generic fuzzy-matching algorithm, for the same reason one
-was rejected here.
+To add another country: use its central bank or equivalent regulator as
+the primary source -- the authoritative list of licensed institutions,
+the same role NRB fills for Nepal. Build that country's own hand-
+verified crosswalk following this pattern. Do not use an automated
+matching algorithm, per the rationale above.
 """
 import argparse
 import json
