@@ -5,20 +5,28 @@ or a national registry like Nepal Rastra Bank's — without needing to know
 which system issued it. Public, no API key, no setup.
 
 ```bash
-curl https://alphaseneca.github.io/swift-lookup/v1/institutions/DEUTDE.json
-curl https://alphaseneca.github.io/swift-lookup/v1/institutions/NP11003.json
+curl https://swift-lookup.ukesharyal.workers.dev/v1/institutions/DEUTDE
+curl https://swift-lookup.ukesharyal.workers.dev/v1/institutions/NP11003
 ```
 
 ```json
 {"data":{"name":"DEUTSCHE BANK AG","countryCode":"DE","codes":{"SWIFT":"DEUTDE"}}}
 ```
 
-That's the static mirror (GitHub Pages / Cloudflare Pages) — no server,
-`.json` on every path, works for any direct lookup. The same data is
-also served dynamically from a Cloudflare Worker, which additionally
-supports search and filtering (`?q=`, `?country=`) that a static file
-can't: see [Static mirror](#static-mirror) for the full mapping between
-the two.
+```json
+{"data":{"name":"Nabil Bank Limited","countryCode":"NP","codes":{"NRB":"NP11003","SWIFT":"NARBNP"},"attributes":{"NRB":{"class":"A"}}}}
+```
+
+That's the Cloudflare Worker — supports search and filtering (`?q=`,
+`?country=`). The same data is also served as a static JSON file
+mirror (GitHub Pages / Cloudflare Pages), one file per path, no query
+strings:
+
+```bash
+curl https://alphaseneca.github.io/swift-lookup/v1/institutions/DEUTDE.json
+```
+
+See [Static mirror](#static-mirror) for the full mapping between the two.
 
 ## Concepts
 
