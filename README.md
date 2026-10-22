@@ -118,6 +118,7 @@ is a plain HTML landing page, not part of the API.
 | `GET /v1/countries/:code` | Single country info, same shape | `/v1/countries/<CC>.json` |
 | `GET /v1/dump` | `{ data: [...] }`, all 33,593 SWIFT/BIC records, unpaginated | `/v1/dump.json` |
 | `GET /v1/meta` | `{ data: {...} }` | `/v1/meta.json` |
+| `GET /v1/openapi.json` | The spec below, unwrapped (no `{ data }`) | `/v1/openapi.json` |
 
 `/v1/countries/:code/banks` is the one to use for "give me all the banks
 in country X" — **one row per bank**, not one per code system:
@@ -147,6 +148,17 @@ Errors: `{ error: { code, message } }` — `code` is one of `NOT_FOUND`,
 Pagination: `limit` default 25, max 200. `offset` default 0.
 `pagination: { total, limit, offset, hasMore }`.
 
+### OpenAPI
+
+`GET /v1/openapi.json` (dynamic and static — byte-identical, one source
+of truth in `worker/src/openapi.js`) is a real, lint-clean
+[OpenAPI 3.1](https://www.openapis.org/) document covering every route
+above, including the `405`/`429` that apply globally and the `security: []`
+stating explicitly that this API is public and unauthenticated by
+design. Drop the URL into Swagger UI, Postman, or a codegen tool
+directly. Validate it yourself with `npx @redocly/cli lint
+site/v1/openapi.json`.
+
 CORS: `Access-Control-Allow-Origin: *`.
 
 Rate limit (Worker only): 1,200 req / 60s per IP (`CF-Connecting-IP`).
@@ -168,6 +180,7 @@ site/            generated static output, not committed
 worker/
   src/index.js     routing
   src/landing.js   HTML landing page
+  src/openapi.js   OpenAPI 3.1 spec (single source for both delivery modes)
 ```
 
 ## License

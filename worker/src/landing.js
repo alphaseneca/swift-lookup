@@ -25,6 +25,7 @@ export function renderLanding(meta) {
 <tr><td><code>GET /v1/countries/:code</code></td><td>Single country info</td></tr>
 <tr><td><code>GET /v1/dump</code></td><td>Full SWIFT/BIC dataset, unpaginated</td></tr>
 <tr><td><code>GET /v1/meta</code></td><td>Dataset info</td></tr>
+<tr><td><code>GET /v1/openapi.json</code></td><td>Machine-readable <a href="https://www.openapis.org/">OpenAPI 3.1</a> spec of everything above</td></tr>
 </table>
 <p>SWIFT/BIC and NRB codes are different identifier systems (international
 vs. domestic Nepal). <code>/v1/countries/:code/banks</code> returns one

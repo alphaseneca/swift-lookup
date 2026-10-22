@@ -7,6 +7,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const openApiSpec = require("../worker/src/openapi.js");
 
 const [, , dataPath, metaPath, institutionsNpPath, outDir] = process.argv;
 if (!dataPath || !metaPath || !institutionsNpPath || !outDir) {
@@ -32,6 +33,9 @@ const writeJson = (p, body) => fs.writeFileSync(p, JSON.stringify(body));
 
 writeJson(path.join(v1, "dump.json"), { data: records });
 writeJson(path.join(v1, "meta.json"), { data: meta });
+// Unwrapped, unlike every other file here: standard OpenAPI tooling
+// expects the spec document itself at the path, not nested under "data".
+writeJson(path.join(v1, "openapi.json"), openApiSpec);
 
 for (const r of records) {
   writeJson(path.join(v1, "codes", `${r.swiftCode}.json`), { data: r });
@@ -135,6 +139,7 @@ fs.writeFileSync(
 <tr><td><code>GET /v1/countries.json</code></td><td>all ${countryList.length} countries</td></tr>
 <tr><td><code>GET /v1/dump.json</code></td><td>all ${records.length} SWIFT/BIC records</td></tr>
 <tr><td><code>GET /v1/meta.json</code></td><td>dataset info</td></tr>
+<tr><td><code>GET /v1/openapi.json</code></td><td>machine-readable <a href="https://www.openapis.org/">OpenAPI 3.1</a> spec</td></tr>
 </table>
 <p>Nepal only, separate from SWIFT &mdash; Nepal Rastra Bank's own institution codes, all 4 BFI classes (${institutionsNp.length} banks/finance companies/microfinance):</p>
 <table>

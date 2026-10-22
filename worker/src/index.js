@@ -1,6 +1,7 @@
 import records from "../../data/swift-codes.json";
 import institutionsNp from "../../data/institutions-np.json";
 import meta from "../../data/meta.json";
+import openApiSpec from "./openapi.js";
 import { renderLanding } from "./landing.js";
 
 const byCode = new Map();
@@ -215,6 +216,7 @@ function routeV1(url, parts) {
         "GET /v1/countries/:code            -> single country info",
         "GET /v1/dump                       -> full SWIFT/BIC dataset, unpaginated",
         "GET /v1/meta                       -> dataset info",
+        "GET /v1/openapi.json               -> OpenAPI 3.1 spec",
       ],
       meta: META,
     });
@@ -222,6 +224,10 @@ function routeV1(url, parts) {
 
   if (parts[0] === "meta" && parts.length === 1) return ok(META);
   if (parts[0] === "dump" && parts.length === 1) return ok(records);
+  // Unwrapped, unlike every other route: standard OpenAPI tooling
+  // (Swagger UI, Postman, codegen) expects the spec document itself at
+  // the root, not nested under { data }.
+  if (parts[0] === "openapi.json" && parts.length === 1) return send(openApiSpec, 200);
 
   if (parts[0] === "codes") {
     if (parts.length === 1) return queryCodes(url);

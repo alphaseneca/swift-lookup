@@ -3,6 +3,21 @@
 Factual record of changes, most recent first. See [README.md](README.md)
 for current behavior; this file is for what changed and why.
 
+## 2026-10-22 (3)
+
+Added `GET /v1/openapi.json` — a real OpenAPI 3.1 document (not just
+prose docs) covering every route, served identically by the Worker and
+the static mirror from one source file (`worker/src/openapi.js`).
+Lint-clean against `@redocly/cli`'s recommended ruleset: `security: []`
+stated explicitly (public API, not an oversight), `info.license` set to
+the repo's actual MIT license, and `405`/`429` documented on every
+operation since the Worker's method/rate-limit checks apply globally
+before routing, not just on the routes that also have a specific `404`.
+Considered and rejected JSON:API spec compliance for the response
+*shape itself* — disproportionate ceremony for flat records, and its
+relationship-linking features assume a live server, which conflicts
+with the static-mirror requirement.
+
 ## 2026-10-22 (2)
 
 Independent design review (a fresh agent given full context, asked to
