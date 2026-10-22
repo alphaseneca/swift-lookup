@@ -15,12 +15,21 @@ import { renderLanding } from "./landing.js";
 //     Nepal-only, but covers every licensed domestic institution,
 //     including ones with no SWIFT presence at all.
 // A future country's own regulator is the same shape as NRB: national,
-// one more entry in CODE_SYSTEMS and CODE_INDEXES below, not a new
-// concept. This is the actual domain model -- "SWIFT record" and
-// "NRB record" are not two unrelated resources, they're two possible
-// labels on the one real entity, which is why the API has a single
-// Institution resource with a `codes` map instead of parallel
-// SWIFT-shaped and NRB-shaped endpoints.
+// not a new concept. "SWIFT record" and "NRB record" are not two
+// unrelated resources, they're two possible labels on the one real
+// entity, which is why the API has a single Institution resource with a
+// `codes` map instead of parallel SWIFT-shaped and NRB-shaped endpoints.
+//
+// What's actually generic when adding a system vs. what isn't:
+// - CODE_SYSTEMS_META, codeSystemIndexes, and lookupInstitution()'s
+//   dispatch loop are generic -- adding a system means adding one entry
+//   to CODE_SYSTEMS_META and one matcher to CODE_SYSTEM_MATCHERS below
+//   (its code format, e.g. exact vs. truncate-to-6-chars, which is
+//   inherently system-specific), never editing the loop itself.
+// - Merging a new country's source data into `institutions` (the
+//   fromNrb/fromSwiftOnly block below) is NOT generic and can't be:
+//   every regulator publishes differently, so each one needs its own
+//   merge code, the same way fromNrb is specific to NRB's shape.
 
 const CODE_SYSTEMS_META = [
   { code: "SWIFT", name: "SWIFT/BIC", issuer: "ISO 9362 Registration Authority (iso9362.org)", scope: "global" },
@@ -54,18 +63,36 @@ const institutions = [...fromNrb, ...fromSwiftOnly].sort(
 
 // ---------- indexes ----------
 
-const bySwiftCode = new Map();
-const byNrbCode = new Map();
+// One index per code system, keyed by that system's own code string.
+// Built generically from CODE_SYSTEMS_META and each institution's codes
+// map -- adding a country's regulator means one more entry in
+// CODE_SYSTEMS_META and one more matcher below, never touching this loop.
+const codeSystemIndexes = {};
+for (const cs of CODE_SYSTEMS_META) codeSystemIndexes[cs.code] = new Map();
+
 const byCountry = new Map();
 const countryNames = new Map();
 for (const r of records) countryNames.set(r.countryCode, r.country);
 
 for (const inst of institutions) {
-  if (inst.codes.SWIFT) bySwiftCode.set(inst.codes.SWIFT, inst);
-  if (inst.codes.NRB) byNrbCode.set(inst.codes.NRB, inst);
+  for (const [system, code] of Object.entries(inst.codes)) codeSystemIndexes[system].set(code, inst);
   if (!byCountry.has(inst.countryCode)) byCountry.set(inst.countryCode, []);
   byCountry.get(inst.countryCode).push(inst);
 }
+
+// Each code system's own code format, in lookup order. The format rule
+// is necessarily system-specific (NRB codes are exact; SWIFT codes are
+// 6, 8, or 11 characters and always key on the first 6) -- that part
+// can't be generic, different registries format codes differently. But
+// adding a system means adding one entry here; lookupInstitution()
+// below never changes.
+const CODE_SYSTEM_MATCHERS = [
+  { code: "NRB", match: (normalized) => codeSystemIndexes.NRB.get(normalized) || null },
+  {
+    code: "SWIFT",
+    match: (normalized) => (normalized.length >= 6 ? codeSystemIndexes.SWIFT.get(normalized.slice(0, 6)) || null : null),
+  },
+];
 
 const codeSystemCounts = {};
 for (const inst of institutions) {
@@ -143,8 +170,10 @@ function html(body) {
 // trying NRB first and falling back to SWIFT is unambiguous.
 function lookupInstitution(code) {
   const normalized = code.trim().toUpperCase().replace(/\s+/g, "");
-  if (byNrbCode.has(normalized)) return byNrbCode.get(normalized);
-  if (normalized.length >= 6) return bySwiftCode.get(normalized.slice(0, 6)) || null;
+  for (const { match } of CODE_SYSTEM_MATCHERS) {
+    const result = match(normalized);
+    if (result) return result;
+  }
   return null;
 }
 

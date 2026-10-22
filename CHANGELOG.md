@@ -3,6 +3,22 @@
 Factual record of changes, most recent first. See [README.md](README.md)
 for current behavior; this file is for what changed and why.
 
+## 2026-10-22 (5)
+
+Fixed a real gap caught by a direct question: "does the universal
+lookup actually work the same way for every country?" It didn't.
+`lookupInstitution()` hardcoded exactly two named maps (`byNrbCode`,
+`bySwiftCode`) with an if/else chain — a third country's regulator
+would have meant editing that function directly, contradicting the
+"one more entry, not a new concept" claim. Replaced with a registry:
+`codeSystemIndexes` built generically from `CODE_SYSTEMS_META`, and
+`CODE_SYSTEM_MATCHERS` holding each system's own code-format rule
+(inherently system-specific — NRB is exact match, SWIFT truncates to 6
+chars). `lookupInstitution()` now just loops the registry; adding a
+system means adding one entry to each list, never touching the loop.
+Behavior-identical for the two systems that exist today — verified
+against the real Workers runtime before and after.
+
 ## 2026-10-22 (4) — redesign from first principles, breaking
 
 Everything up to this point grew by patching: fix a complaint, bolt on a

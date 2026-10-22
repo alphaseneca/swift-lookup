@@ -95,12 +95,24 @@ one. `build-data.sh` validates both directions of the table (that every
 regulator first — every country has one, and it's the authoritative
 source the same way NRB is for Nepal (an intermediary like a clearing
 house may look complete and not be — NCHL's lists turned out to exclude
-microfinance entirely). Build a `build-<cc>-institutions.py` (format
-differs per regulator, there's no standard), that country's own hand-
-verified crosswalk if it also has SWIFT coverage, and one line in both
-`worker/src/index.js` and `build-site.js` wherever `institutionsNp` is
-read. Don't write a generic fuzzy-matching algorithm — same reasoning as
-above.
+microfinance entirely).
+
+What's actually generic (no code change) vs. what isn't:
+
+- `CODE_SYSTEMS_META`, `codeSystemIndexes`, and `lookupInstitution()`'s
+  dispatch loop in `worker/src/index.js` are generic. Add one entry to
+  `CODE_SYSTEMS_META`, one matcher to `CODE_SYSTEM_MATCHERS` describing
+  that system's code format (exact match, truncate-to-N-chars,
+  whatever it needs — this part is inherently system-specific, formats
+  differ by regulator), and the lookup/dispatch logic itself never
+  changes.
+- Merging that country's source data into the canonical `institutions`
+  array is **not** generic and can't be — every regulator publishes
+  differently, so it needs its own `build-<cc>-institutions.py` and its
+  own merge block (the `fromNrb`/`fromSwiftOnly` pattern), the same way
+  NRB's is specific to NRB's shape. If it also has SWIFT coverage, that
+  means a hand-verified crosswalk, same as Nepal's — never a generic
+  fuzzy-matching algorithm, same reasoning as above.
 
 **Why REST-ish JSON, not GraphQL/JSON:API/RPC.** Covered by an
 independent design review — see CHANGELOG.md. Short version: the static
