@@ -14,28 +14,25 @@ export function renderLanding(meta) {
   footer{margin-top:3rem;color:#666;font-size:.9em}
 </style>
 <h1>swiftlookup</h1>
-<p>SWIFT/BIC code &rarr; bank name + country. ${meta.recordCount.toLocaleString()} records, ${meta.countryCount} countries.</p>
+<p>Look up a bank by any code it holds &mdash; SWIFT/BIC or a national
+registry like Nepal Rastra Bank's &mdash; without caring which.
+${meta.institutionCount.toLocaleString()} institutions, ${meta.countryCount} countries.</p>
 <table>
-<tr><td><code>GET /v1/countries/:code/banks?q=</code></td><td><b>Every bank in a country</b>, SWIFT + domestic combined, searchable</td></tr>
-<tr><td><code>GET /v1/codes/:code</code></td><td>Resolve a SWIFT/BIC code</td></tr>
-<tr><td><code>GET /v1/codes?country=&q=&limit=&offset=</code></td><td>List/search SWIFT/BIC codes only</td></tr>
-<tr><td><code>GET /v1/institutions/:code</code></td><td>Resolve a domestic institution code (NRB, Nepal only)</td></tr>
-<tr><td><code>GET /v1/institutions?country=&q=&limit=&offset=</code></td><td>List/search domestic institutions only &mdash; name &rarr; code</td></tr>
+<tr><td><code>GET /v1/institutions/:code</code></td><td>Resolve any code, any system</td></tr>
+<tr><td><code>GET /v1/institutions?country=&q=&limit=&offset=</code></td><td>List or search institutions</td></tr>
+<tr><td><code>GET /v1/code-systems</code></td><td>What code systems exist, and what each covers</td></tr>
 <tr><td><code>GET /v1/countries</code></td><td>All countries</td></tr>
 <tr><td><code>GET /v1/countries/:code</code></td><td>Single country info</td></tr>
-<tr><td><code>GET /v1/dump</code></td><td>Full SWIFT/BIC dataset, unpaginated</td></tr>
+<tr><td><code>GET /v1/dump</code></td><td>Every institution, unpaginated</td></tr>
 <tr><td><code>GET /v1/meta</code></td><td>Dataset info</td></tr>
 <tr><td><code>GET /v1/openapi.json</code></td><td>Machine-readable <a href="https://www.openapis.org/">OpenAPI 3.1</a> spec of everything above</td></tr>
 </table>
-<p>SWIFT/BIC and NRB codes are different identifier systems (international
-vs. domestic Nepal). <code>/v1/countries/:code/banks</code> returns one
-row per bank &mdash; <code>{ name, institutionCode, swiftCode, class }</code>,
-either field <code>null</code> when that bank has no code in that system.
-A hand-verified crosswalk (not name-matching) is what makes this exact.</p>
+<p>Every response is JSON: <code>{ data }</code> for one institution,
+<code>{ data, pagination }</code> for a list, <code>{ error: { code,
+message } }</code> on failure. Public, no key required, 1,200
+requests/60s per IP.</p>
 <footer>
-  By <a href="https://github.com/alphaseneca">alphaseneca</a>.
-  Data: <a href="https://github.com/lobax/banknames">lobax/banknames</a>, from the ISO 9362 Registration Authority's public BIC directory.
-  <a href="https://github.com/alphaseneca/swift-lookup">Source</a>.
+  <a href="https://github.com/alphaseneca/swift-lookup">Source, data provenance, and license</a>.
 </footer>
 `;
 }

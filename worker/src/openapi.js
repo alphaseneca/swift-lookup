@@ -3,30 +3,44 @@
 // can use it without duplicating content.
 const ref = (name) => ({ $ref: `#/components/schemas/${name}` });
 
-const SwiftCode = {
-  type: "object",
-  properties: {
-    swiftCode: { type: "string", example: "DEUTDE" },
-    bankCode: { type: "string", example: "DEUT" },
-    countryCode: { type: "string", example: "DE" },
-    country: { type: "string", example: "Germany" },
-    bank: { type: "string", example: "DEUTSCHE BANK AG" },
-  },
-  required: ["swiftCode", "bankCode", "countryCode", "country", "bank"],
-};
-
 const Institution = {
   type: "object",
+  description:
+    "A real bank or financial institution. `codes` has one entry per code system it's registered in -- most institutions have exactly one.",
   properties: {
-    institutionCode: { type: "string", example: "NP11003" },
-    nrbCode: { type: "string", example: "11003" },
     name: { type: "string", example: "Nabil Bank Limited" },
-    class: { type: "string", enum: ["A", "B", "C", "D"], description: "A=commercial, B=development, C=finance, D=microfinance (Nepal Rastra Bank's classes)" },
-    countryCode: { type: "string", example: "NP" },
-    codeSystem: { type: "string", example: "NRB" },
-    swiftCode: { type: ["string", "null"], example: "NARBNP", description: "Null unless this institution has a hand-verified SWIFT code." },
+    countryCode: { type: "string", example: "NP", description: "ISO 3166-1 alpha-2." },
+    codes: {
+      type: "object",
+      description: "Known code-system codes, by code system. Absent key = no code in that system.",
+      properties: { SWIFT: { type: "string", example: "NARBNP" }, NRB: { type: "string", example: "NP11003" } },
+      additionalProperties: { type: "string" },
+    },
+    attributes: {
+      type: "object",
+      description: "System-specific detail that doesn't apply across systems. Present only when a system contributed some.",
+      properties: {
+        NRB: {
+          type: "object",
+          properties: { class: { type: "string", enum: ["A", "B", "C", "D"], description: "A=commercial, B=development, C=finance, D=microfinance." } },
+        },
+      },
+      additionalProperties: true,
+    },
   },
-  required: ["institutionCode", "nrbCode", "name", "class", "countryCode", "codeSystem", "swiftCode"],
+  required: ["name", "countryCode", "codes"],
+};
+
+const CodeSystem = {
+  type: "object",
+  properties: {
+    code: { type: "string", example: "SWIFT" },
+    name: { type: "string", example: "SWIFT/BIC" },
+    issuer: { type: "string", example: "ISO 9362 Registration Authority (iso9362.org)" },
+    scope: { type: "string", example: "global", description: "\"global\", or an ISO 3166-1 alpha-2 country code for a national system." },
+    recordCount: { type: "integer" },
+  },
+  required: ["code", "name", "issuer", "scope", "recordCount"],
 };
 
 const Country = {
@@ -34,23 +48,10 @@ const Country = {
   properties: {
     code: { type: "string", example: "NP" },
     name: { type: "string", example: "Nepal" },
-    bankCount: { type: "integer", example: 23, description: "Number of SWIFT/BIC codes for this country." },
-    hasInstitutionDirectory: { type: "boolean", example: true },
+    institutionCount: { type: "integer", example: 126 },
+    codeSystems: { type: "array", items: { type: "string" }, example: ["NRB", "SWIFT"], description: "Which code systems have at least one institution here." },
   },
-  required: ["code", "name", "bankCount", "hasInstitutionDirectory"],
-};
-
-const CombinedBank = {
-  type: "object",
-  properties: {
-    name: { type: "string", example: "Nabil Bank Limited" },
-    countryCode: { type: "string", example: "NP" },
-    institutionCode: { type: ["string", "null"], example: "NP11003" },
-    swiftCode: { type: ["string", "null"], example: "NARBNP" },
-    class: { type: ["string", "null"], enum: ["A", "B", "C", "D", null] },
-  },
-  required: ["name", "countryCode", "institutionCode", "swiftCode", "class"],
-  description: "One row per bank. Either code field is null when that bank has no code in that system — never two rows for one bank.",
+  required: ["code", "name", "institutionCount", "codeSystems"],
 };
 
 const Meta = {
@@ -59,8 +60,9 @@ const Meta = {
     author: { type: "string" },
     dataSource: { type: "string" },
     builtAt: { type: "string", format: "date-time" },
-    recordCount: { type: "integer" },
+    recordCount: { type: "integer", description: "Raw SWIFT/BIC source records." },
     countryCount: { type: "integer" },
+    institutionCount: { type: "integer", description: "Canonical institutions after merging SWIFT and national codes for the same bank." },
     swiftCodeFormat: { type: "string" },
   },
 };
@@ -110,9 +112,15 @@ const commonResponses = {
 };
 const withCommon = (responses) => ({ ...responses, ...commonResponses });
 
-const paramCode = { name: "code", in: "path", required: true, schema: { type: "string" }, description: "Case-insensitive; accepts 6, 8, or 11-character codes, normalized to the first 6 characters." };
+const paramCode = {
+  name: "code",
+  in: "path",
+  required: true,
+  schema: { type: "string" },
+  description: "Any code in any known code system -- a SWIFT/BIC code (6, 8, or 11 characters) or an NRB institution code. Dispatched by format, not by asking which system it's from.",
+};
 const paramCountry = { name: "country", in: "query", required: false, schema: { type: "string" }, description: "ISO 3166-1 alpha-2 country code filter." };
-const paramQ = { name: "q", in: "query", required: false, schema: { type: "string" }, description: "Substring match, case-insensitive." };
+const paramQ = { name: "q", in: "query", required: false, schema: { type: "string" }, description: "Substring match on name or any code, case-insensitive." };
 const paramLimit = { name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 200, default: 25 } };
 const paramOffset = { name: "offset", in: "query", required: false, schema: { type: "integer", minimum: 0, default: 0 } };
 
@@ -120,9 +128,9 @@ module.exports = {
   openapi: "3.1.0",
   info: {
     title: "swiftlookup",
-    version: "1.0.0",
+    version: "2.0.0",
     description:
-      "SWIFT/BIC code to bank name lookup, plus a Nepal-only domestic institution directory (Nepal Rastra Bank codes — a separate identifier system, not SWIFT). Served two ways with identical response shapes: this dynamic API, and a static JSON file mirror (same paths, `.json` appended, no query-string support) for GitHub Pages / Cloudflare Pages.",
+      "Look up a bank or financial institution by any code it holds, in any code system. Two code systems exist today: SWIFT/BIC (global, issued by the ISO 9362 Registration Authority) and NRB (Nepal only, issued by Nepal Rastra Bank, covering domestic institutions SWIFT doesn't reach). Served two ways with byte-identical response shapes: this dynamic API, and a static JSON file mirror (same paths, `.json` appended, no query-string support) for GitHub Pages / Cloudflare Pages.",
     license: { name: "MIT", url: "https://github.com/alphaseneca/swift-lookup/blob/main/LICENSE" },
   },
   servers: [{ url: "/v1" }],
@@ -137,26 +145,9 @@ module.exports = {
         responses: withCommon({ 200: jsonResponse({ type: "object", properties: { name: { type: "string" }, endpoints: { type: "array", items: { type: "string" } }, meta: ref("Meta") } }) }),
       },
     },
-    "/codes/{code}": {
-      get: {
-        summary: "Resolve a single SWIFT/BIC code",
-        operationId: "getCode",
-        parameters: [paramCode],
-        responses: withCommon({ 200: jsonResponse(wrapData(ref("SwiftCode"))), 404: errorResponse("No SWIFT/BIC code matches.") }),
-      },
-    },
-    "/codes": {
-      get: {
-        summary: "List or search SWIFT/BIC codes",
-        operationId: "listCodes",
-        description: "With neither `country` nor `q`, pages through the full 33,593-record dataset.",
-        parameters: [paramCountry, paramQ, paramLimit, paramOffset],
-        responses: withCommon({ 200: jsonResponse(wrapPage(ref("SwiftCode"))) }),
-      },
-    },
     "/institutions/{code}": {
       get: {
-        summary: "Resolve a single domestic institution code (NRB, Nepal only)",
+        summary: "Resolve any code, in any code system, to its institution",
         operationId: "getInstitution",
         parameters: [paramCode],
         responses: withCommon({ 200: jsonResponse(wrapData(ref("Institution"))), 404: errorResponse("No institution matches.") }),
@@ -164,11 +155,18 @@ module.exports = {
     },
     "/institutions": {
       get: {
-        summary: "List or search domestic institutions",
+        summary: "List or search institutions",
         operationId: "listInstitutions",
-        description: "`country` is an optional filter, not a required resource identifier — an unrecognized country returns an empty page, not 404.",
+        description: "With neither `country` nor `q`, pages through all 33,676 institutions.",
         parameters: [paramCountry, paramQ, paramLimit, paramOffset],
         responses: withCommon({ 200: jsonResponse(wrapPage(ref("Institution"))) }),
+      },
+    },
+    "/code-systems": {
+      get: {
+        summary: "What code systems exist and what each one covers",
+        operationId: "listCodeSystems",
+        responses: withCommon({ 200: jsonResponse(wrapData({ type: "array", items: ref("CodeSystem") })) }),
       },
     },
     "/countries": {
@@ -186,19 +184,11 @@ module.exports = {
         responses: withCommon({ 200: jsonResponse(wrapData(ref("Country"))), 404: errorResponse("Unknown country code.") }),
       },
     },
-    "/countries/{code}/banks": {
-      get: {
-        summary: "Every bank in a country, SWIFT and domestic combined — one row per bank",
-        operationId: "listCountryBanks",
-        parameters: [{ ...paramCode, description: "ISO 3166-1 alpha-2 country code." }, paramQ, paramLimit, paramOffset],
-        responses: withCommon({ 200: jsonResponse(wrapPage(ref("CombinedBank"))), 404: errorResponse("Unknown country code.") }),
-      },
-    },
     "/dump": {
       get: {
-        summary: "Full SWIFT/BIC dataset, unpaginated",
+        summary: "Every institution, unpaginated",
         operationId: "getDump",
-        responses: withCommon({ 200: jsonResponse(wrapData({ type: "array", items: ref("SwiftCode") })) }),
+        responses: withCommon({ 200: jsonResponse(wrapData({ type: "array", items: ref("Institution") })) }),
       },
     },
     "/meta": {
@@ -218,6 +208,6 @@ module.exports = {
     },
   },
   components: {
-    schemas: { SwiftCode, Institution, Country, CombinedBank, Meta, Pagination, Error: Error_ },
+    schemas: { Institution, CodeSystem, Country, Meta, Pagination, Error: Error_ },
   },
 };

@@ -3,6 +3,48 @@
 Factual record of changes, most recent first. See [README.md](README.md)
 for current behavior; this file is for what changed and why.
 
+## 2026-10-22 (4) — redesign from first principles, breaking
+
+Everything up to this point grew by patching: fix a complaint, bolt on a
+feature, repeat. The result worked but was structurally incoherent — two
+unrelated-looking endpoints (`/v1/codes`, `/v1/institutions`) for what is
+actually the same real-world entity, plus a third endpoint
+(`/v1/countries/:code/banks`) bolted on afterward just to merge them back
+together. This pass starts from the actual domain model instead:
+
+- A bank is an **Institution**, identified by zero or more **codes**,
+  each issued by one **code system**. Two code systems exist: **SWIFT**
+  (global, ISO 9362 Registration Authority) and **NRB** (national,
+  Nepal Rastra Bank). A future country's own regulator is the same
+  shape as NRB — national, one more entry in the code-system list — not
+  a new concept.
+- Replaced `/v1/codes/*`, the old NRB-only `/v1/institutions/*`, and
+  `/v1/countries/:code/banks` with one consistent surface:
+  `/v1/institutions/:code` (resolves *any* code, any system, by format —
+  no need to tell it which system), `/v1/institutions?country=&q=` (the
+  one and only way to list/search, replacing three overlapping ways to
+  get "banks in a country"), and `/v1/code-systems` (new — what systems
+  exist and what each covers, discoverable via the API itself instead of
+  only living in README prose).
+- `Institution` shape: `{ name, countryCode, codes: { SWIFT?, NRB? },
+  attributes?: { NRB?: { class } } }`. Replaces the old combined shape's
+  two fixed nullable fields (`institutionCode`/`swiftCode`), which an
+  independent review had already flagged as not generalizing past one
+  domestic system per country — an open `codes` map does.
+- `/v1/dump` and `/v1/meta` now report canonical institution counts
+  (33,676 = 33,593 SWIFT + 103 NRB, 20 held by both) alongside the raw
+  SWIFT source count, rather than conflating the two under one
+  `recordCount`.
+- Split README.md down to API-consumer content only — concepts,
+  endpoints, errors, rate limits, data summary, license. Moved
+  everything a consumer doesn't need (file layout, build pipeline,
+  deploy steps, the NCHL-vs-NRB and fuzzy-matching-rejection narratives)
+  to a new CONTRIBUTING.md.
+- Bumped the OpenAPI document's own `info.version` to `2.0.0` to mark
+  the shape change, even though the URL path stays `/v1` (no real
+  consumer existed yet to break, so no reason to add path-versioning
+  churn for this).
+
 ## 2026-10-22 (3)
 
 Added `GET /v1/openapi.json` — a real OpenAPI 3.1 document (not just

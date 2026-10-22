@@ -4,42 +4,95 @@ import meta from "../../data/meta.json";
 import openApiSpec from "./openapi.js";
 import { renderLanding } from "./landing.js";
 
-const byCode = new Map();
-for (const r of records) byCode.set(r.swiftCode, r);
+// ---------- domain model ----------
+//
+// A real bank is an Institution. It's identified by zero or more Codes,
+// each issued by one Code System. Exactly two code systems exist today:
+//   - SWIFT: global, issued by the ISO 9362 Registration Authority.
+//     Every country has SWIFT coverage, but only for banks that do their
+//     own cross-border correspondent banking.
+//   - NRB: national, issued by Nepal Rastra Bank (the central bank).
+//     Nepal-only, but covers every licensed domestic institution,
+//     including ones with no SWIFT presence at all.
+// A future country's own regulator is the same shape as NRB: national,
+// one more entry in CODE_SYSTEMS and CODE_INDEXES below, not a new
+// concept. This is the actual domain model -- "SWIFT record" and
+// "NRB record" are not two unrelated resources, they're two possible
+// labels on the one real entity, which is why the API has a single
+// Institution resource with a `codes` map instead of parallel
+// SWIFT-shaped and NRB-shaped endpoints.
 
+const CODE_SYSTEMS_META = [
+  { code: "SWIFT", name: "SWIFT/BIC", issuer: "ISO 9362 Registration Authority (iso9362.org)", scope: "global" },
+  { code: "NRB", name: "Nepal Rastra Bank institution code", issuer: "Nepal Rastra Bank", scope: "NP" },
+];
+
+// NRB institutions whose SWIFT_CROSSWALK (build-np-institutions.py) set a
+// swiftCode already own that SWIFT record -- it becomes one Institution
+// with both codes, not two. Everything else in swift-codes.json is its
+// own standalone Institution with just a SWIFT code.
+const claimedSwiftCodes = new Set(institutionsNp.map((i) => i.swiftCode).filter(Boolean));
+
+const fromNrb = institutionsNp.map((i) => ({
+  name: i.name,
+  countryCode: i.countryCode,
+  codes: i.swiftCode ? { NRB: i.institutionCode, SWIFT: i.swiftCode } : { NRB: i.institutionCode },
+  attributes: { NRB: { class: i.class } },
+}));
+
+const fromSwiftOnly = records
+  .filter((r) => !claimedSwiftCodes.has(r.swiftCode))
+  .map((r) => ({
+    name: r.bank,
+    countryCode: r.countryCode,
+    codes: { SWIFT: r.swiftCode },
+  }));
+
+const institutions = [...fromNrb, ...fromSwiftOnly].sort(
+  (a, b) => a.countryCode.localeCompare(b.countryCode) || a.name.localeCompare(b.name)
+);
+
+// ---------- indexes ----------
+
+const bySwiftCode = new Map();
+const byNrbCode = new Map();
 const byCountry = new Map();
-for (const r of records) {
-  if (!byCountry.has(r.countryCode)) byCountry.set(r.countryCode, []);
-  byCountry.get(r.countryCode).push(r);
+const countryNames = new Map();
+for (const r of records) countryNames.set(r.countryCode, r.country);
+
+for (const inst of institutions) {
+  if (inst.codes.SWIFT) bySwiftCode.set(inst.codes.SWIFT, inst);
+  if (inst.codes.NRB) byNrbCode.set(inst.codes.NRB, inst);
+  if (!byCountry.has(inst.countryCode)) byCountry.set(inst.countryCode, []);
+  byCountry.get(inst.countryCode).push(inst);
 }
 
-// Country-specific domestic institution directories (NRB codes for
-// Nepal, not SWIFT/BIC). Keyed by countryCode so adding another country
-// later is a map entry, not a new code path.
-const institutionsByCountry = new Map([["NP", institutionsNp]]);
-const institutionByCode = new Map(institutionsNp.map((i) => [i.institutionCode, i]));
+const codeSystemCounts = {};
+for (const inst of institutions) {
+  for (const system of Object.keys(inst.codes)) codeSystemCounts[system] = (codeSystemCounts[system] || 0) + 1;
+}
+const codeSystemsList = CODE_SYSTEMS_META.map((cs) => ({ ...cs, recordCount: codeSystemCounts[cs.code] || 0 }));
 
-// Union of both sources: a country can have an institution directory
-// with zero SWIFT codes (not true for Nepal today, but must not 404 on
-// /v1/countries/:code or /v1/countries/:code/banks when it happens).
-const allCountryCodes = new Set([...byCountry.keys(), ...institutionsByCountry.keys()]);
-const countryList = [...allCountryCodes]
-  .map((code) => {
-    const banks = byCountry.get(code) || [];
+const countryList = [...byCountry.entries()]
+  .map(([code, insts]) => {
+    const systems = new Set();
+    for (const inst of insts) for (const s of Object.keys(inst.codes)) systems.add(s);
     return {
       code,
-      name: banks[0]?.country ?? code,
-      bankCount: banks.length,
-      hasInstitutionDirectory: institutionsByCountry.has(code),
+      name: countryNames.get(code) || code,
+      institutionCount: insts.length,
+      codeSystems: [...systems].sort(),
     };
   })
   .sort((a, b) => a.code.localeCompare(b.code));
 const countryByCode = new Map(countryList.map((c) => [c.code, c]));
 
-// Spread data/meta.json rather than hand-duplicating its fields, so this
-// can't silently drift from what merge.py actually produces (it did:
-// builtAt was missing here until this fix).
-const META = { ...meta, recordCount: records.length, countryCount: countryList.length };
+const META = {
+  ...meta,
+  recordCount: records.length,
+  countryCount: countryList.length,
+  institutionCount: institutions.length,
+};
 
 const RATE_LIMIT = { limit: 1200, periodSeconds: 60 };
 const MAX_LIMIT = 200;
@@ -83,10 +136,16 @@ function html(body) {
 
 // ---------- data access ----------
 
-function lookupCode(code) {
+// Dispatches by format, not by asking the caller which system a code
+// belongs to: NRB codes are "<countryCode><digits>" (currently always
+// 7 chars, e.g. NP11003); SWIFT codes normalize to a 6-char prefix. The
+// two formats can't collide (digits vs. letters, different lengths), so
+// trying NRB first and falling back to SWIFT is unambiguous.
+function lookupInstitution(code) {
   const normalized = code.trim().toUpperCase().replace(/\s+/g, "");
-  if (normalized.length < 6) return null;
-  return byCode.get(normalized.slice(0, 6)) || null;
+  if (byNrbCode.has(normalized)) return byNrbCode.get(normalized);
+  if (normalized.length >= 6) return bySwiftCode.get(normalized.slice(0, 6)) || null;
+  return null;
 }
 
 // parseInt(...) || DEFAULT would silently turn an explicit ?limit=0 into
@@ -100,103 +159,23 @@ function parsePagination(url) {
   return { limit, offset };
 }
 
-// Filters by ?country= and/or ?q=, then paginates. With neither param, this
-// just pages through the full sorted dataset.
-function queryCodes(url) {
-  const country = (url.searchParams.get("country") || "").trim().toUpperCase();
-  const q = (url.searchParams.get("q") || "").trim().toUpperCase();
-  const { limit, offset } = parsePagination(url);
-
-  let matches = records;
-  if (country) matches = byCountry.get(country) || [];
-  if (q) {
-    matches = matches.filter(
-      (r) =>
-        r.swiftCode.includes(q) ||
-        r.bank.toUpperCase().includes(q) ||
-        r.country.toUpperCase().includes(q)
-    );
-  }
-
-  const page = matches.slice(offset, offset + limit);
-  return paginated(page, { limit, offset, total: matches.length });
-}
-
-// Domestic institution directories (NRB for Nepal). ?country= narrows to
-// one country's directory; without it, searches across all of them
-// (currently just NP, but this stays correct as more are added).
+// country is a filter on the collection, not a resource path segment:
+// an unrecognized country is just a filter that matches nothing (200,
+// empty page), not a 404. 404 is reserved for /v1/countries/:code,
+// where the country IS the resource.
 function queryInstitutions(url) {
   const country = (url.searchParams.get("country") || "").trim().toUpperCase();
   const q = (url.searchParams.get("q") || "").trim().toUpperCase();
   const { limit, offset } = parsePagination(url);
 
-  // country is a filter on a collection, not a resource path segment --
-  // matches queryCodes's behavior: an unknown/empty country is just a
-  // filter that matches nothing (200, empty page), not a 404. 404 is
-  // reserved for /v1/countries/:code, where the country IS the resource.
-  let pool;
-  if (country) pool = institutionsByCountry.get(country) || [];
-  else pool = [...institutionsByCountry.values()].flat();
-
-  let matches = pool;
+  let pool = country ? byCountry.get(country) || [] : institutions;
   if (q) {
-    matches = matches.filter(
-      (i) => i.institutionCode.includes(q) || i.name.toUpperCase().includes(q)
+    pool = pool.filter(
+      (inst) => inst.name.toUpperCase().includes(q) || Object.values(inst.codes).some((c) => c.includes(q))
     );
   }
 
-  return paginated(matches.slice(offset, offset + limit), { limit, offset, total: matches.length });
-}
-
-// Every bank in a country, one row each, whether it has a SWIFT code, a
-// domestic (e.g. NRB) code, or both -- institutions carry their own
-// swiftCode when a hand-verified crosswalk set one (see
-// build-np-institutions.py), so this just has to avoid listing that same
-// SWIFT record a second time. Anything left in the SWIFT data with no
-// institution claiming it (e.g. a bank absent from the domestic
-// regulator's current list) still shows up, institutionCode: null.
-function unifiedBanks(country) {
-  const domestic = institutionsByCountry.get(country) || [];
-  const claimedSwiftCodes = new Set(domestic.map((i) => i.swiftCode).filter(Boolean));
-
-  const fromInstitutions = domestic.map((i) => ({
-    name: i.name,
-    countryCode: i.countryCode,
-    institutionCode: i.institutionCode,
-    swiftCode: i.swiftCode || null,
-    class: i.class,
-  }));
-
-  const orphanSwift = (byCountry.get(country) || [])
-    .filter((r) => !claimedSwiftCodes.has(r.swiftCode))
-    .map((r) => ({
-      name: r.bank,
-      countryCode: r.countryCode,
-      institutionCode: null,
-      swiftCode: r.swiftCode,
-      class: null,
-    }));
-
-  return [...fromInstitutions, ...orphanSwift];
-}
-
-function queryCountryBanks(url, countryParam) {
-  const country = countryParam.trim().toUpperCase();
-  if (!countryByCode.has(country)) {
-    return fail("NOT_FOUND", `no country found for code "${country}"`, 404);
-  }
-  const q = (url.searchParams.get("q") || "").trim().toUpperCase();
-  let matches = unifiedBanks(country);
-  if (q) {
-    matches = matches.filter(
-      (b) =>
-        b.name.toUpperCase().includes(q) ||
-        (b.swiftCode && b.swiftCode.includes(q)) ||
-        (b.institutionCode && b.institutionCode.includes(q))
-    );
-  }
-  const { limit, offset } = parsePagination(url);
-  return paginated(matches.slice(offset, offset + limit), { limit, offset, total: matches.length });
+  return paginated(pool.slice(offset, offset + limit), { limit, offset, total: pool.length });
 }
 
 // ---------- routing ----------
@@ -207,33 +186,33 @@ function routeV1(url, parts) {
     return ok({
       name: "swiftlookup",
       endpoints: [
-        "GET /v1/countries/:code/banks?q=   -> every bank in a country, SWIFT + domestic combined",
-        "GET /v1/codes/:code                -> single SWIFT/BIC code lookup",
-        "GET /v1/codes?country=&q=&limit=&offset= -> list/search SWIFT/BIC codes only",
-        "GET /v1/institutions/:code         -> single domestic institution lookup (NRB, Nepal only)",
-        "GET /v1/institutions?country=&q=&limit=&offset= -> list/search domestic institutions only",
-        "GET /v1/countries                  -> all countries",
-        "GET /v1/countries/:code            -> single country info",
-        "GET /v1/dump                       -> full SWIFT/BIC dataset, unpaginated",
-        "GET /v1/meta                       -> dataset info",
-        "GET /v1/openapi.json               -> OpenAPI 3.1 spec",
+        "GET /v1/institutions/:code             -> resolve any code, any system",
+        "GET /v1/institutions?country=&q=&limit=&offset= -> list/search institutions",
+        "GET /v1/code-systems                    -> what code systems exist and cover what",
+        "GET /v1/countries                       -> all countries",
+        "GET /v1/countries/:code                 -> single country info",
+        "GET /v1/dump                            -> every institution, unpaginated",
+        "GET /v1/meta                             -> dataset info",
+        "GET /v1/openapi.json                    -> OpenAPI 3.1 spec",
       ],
       meta: META,
     });
   }
 
   if (parts[0] === "meta" && parts.length === 1) return ok(META);
-  if (parts[0] === "dump" && parts.length === 1) return ok(records);
+  if (parts[0] === "dump" && parts.length === 1) return ok(institutions);
   // Unwrapped, unlike every other route: standard OpenAPI tooling
   // (Swagger UI, Postman, codegen) expects the spec document itself at
   // the root, not nested under { data }.
   if (parts[0] === "openapi.json" && parts.length === 1) return send(openApiSpec, 200);
 
-  if (parts[0] === "codes") {
-    if (parts.length === 1) return queryCodes(url);
+  if (parts[0] === "code-systems" && parts.length === 1) return ok(codeSystemsList);
+
+  if (parts[0] === "institutions") {
+    if (parts.length === 1) return queryInstitutions(url);
     if (parts.length === 2) {
-      const result = lookupCode(parts[1]);
-      if (!result) return fail("NOT_FOUND", `no bank found for code "${parts[1]}"`, 404);
+      const result = lookupInstitution(parts[1]);
+      if (!result) return fail("NOT_FOUND", `no institution found for code "${parts[1]}"`, 404);
       return ok(result);
     }
   }
@@ -244,18 +223,6 @@ function routeV1(url, parts) {
       const country = countryByCode.get(parts[1].trim().toUpperCase());
       if (!country) return fail("NOT_FOUND", `no country found for code "${parts[1]}"`, 404);
       return ok(country);
-    }
-    if (parts.length === 3 && parts[2] === "banks") {
-      return queryCountryBanks(url, parts[1]);
-    }
-  }
-
-  if (parts[0] === "institutions") {
-    if (parts.length === 1) return queryInstitutions(url);
-    if (parts.length === 2) {
-      const result = institutionByCode.get(parts[1].trim().toUpperCase());
-      if (!result) return fail("NOT_FOUND", `no institution found for code "${parts[1]}"`, 404);
-      return ok(result);
     }
   }
 
@@ -279,7 +246,7 @@ export default {
         headers: {
           "Access-Control-Allow-Origin": "*",
           "Access-Control-Allow-Methods": "GET, OPTIONS",
-          "Access-Control-Max-Age": "86400", // lets the browser skip repeat preflights for a day
+          "Access-Control-Max-Age": "86400",
         },
       });
     }

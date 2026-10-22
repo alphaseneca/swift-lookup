@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-// Builds site/ from data/swift-codes.json: a static mirror of the /v1 API,
-// one JSON file per resource. Responses match the Worker's envelope shape
-// ({ data } / { data, pagination }) so client code can treat either source
-// the same way.
+// Builds site/ from data/: a static mirror of the /v1 API, one JSON file
+// per resource. Responses match the Worker's envelope shape
+// ({ data } / { data, pagination }) so client code can treat either
+// source the same way. Mirrors worker/src/index.js's merge logic
+// exactly -- see the comment there for the domain model this follows.
 "use strict";
 
 const fs = require("fs");
@@ -21,97 +22,82 @@ const records = JSON.parse(fs.readFileSync(dataPath, "utf8"));
 const meta = JSON.parse(fs.readFileSync(metaPath, "utf8"));
 const institutionsNp = JSON.parse(fs.readFileSync(institutionsNpPath, "utf8"));
 
+const CODE_SYSTEMS_META = [
+  { code: "SWIFT", name: "SWIFT/BIC", issuer: "ISO 9362 Registration Authority (iso9362.org)", scope: "global" },
+  { code: "NRB", name: "Nepal Rastra Bank institution code", issuer: "Nepal Rastra Bank", scope: "NP" },
+];
+
+const claimedSwiftCodes = new Set(institutionsNp.map((i) => i.swiftCode).filter(Boolean));
+
+const fromNrb = institutionsNp.map((i) => ({
+  name: i.name,
+  countryCode: i.countryCode,
+  codes: i.swiftCode ? { NRB: i.institutionCode, SWIFT: i.swiftCode } : { NRB: i.institutionCode },
+  attributes: { NRB: { class: i.class } },
+}));
+
+const fromSwiftOnly = records
+  .filter((r) => !claimedSwiftCodes.has(r.swiftCode))
+  .map((r) => ({ name: r.bank, countryCode: r.countryCode, codes: { SWIFT: r.swiftCode } }));
+
+const institutions = [...fromNrb, ...fromSwiftOnly].sort(
+  (a, b) => a.countryCode.localeCompare(b.countryCode) || a.name.localeCompare(b.name)
+);
+
+const countryNames = new Map();
+for (const r of records) countryNames.set(r.countryCode, r.country);
+
+const byCountry = new Map();
+for (const inst of institutions) {
+  if (!byCountry.has(inst.countryCode)) byCountry.set(inst.countryCode, []);
+  byCountry.get(inst.countryCode).push(inst);
+}
+
+const codeSystemCounts = {};
+for (const inst of institutions) {
+  for (const system of Object.keys(inst.codes)) codeSystemCounts[system] = (codeSystemCounts[system] || 0) + 1;
+}
+const codeSystemsList = CODE_SYSTEMS_META.map((cs) => ({ ...cs, recordCount: codeSystemCounts[cs.code] || 0 }));
+
 fs.rmSync(outDir, { recursive: true, force: true });
 const v1 = path.join(outDir, "v1");
-fs.mkdirSync(path.join(v1, "codes"), { recursive: true });
-fs.mkdirSync(path.join(v1, "countries"), { recursive: true });
 fs.mkdirSync(path.join(v1, "institutions"), { recursive: true });
+fs.mkdirSync(path.join(v1, "countries"), { recursive: true });
 // Serve files as-is; skip Jekyll processing (slow over ~34k files, unneeded).
 fs.writeFileSync(path.join(outDir, ".nojekyll"), "");
 
 const writeJson = (p, body) => fs.writeFileSync(p, JSON.stringify(body));
 
-writeJson(path.join(v1, "dump.json"), { data: records });
-writeJson(path.join(v1, "meta.json"), { data: meta });
+writeJson(path.join(v1, "dump.json"), { data: institutions });
+writeJson(path.join(v1, "meta.json"), {
+  data: { ...meta, recordCount: records.length, countryCount: byCountry.size, institutionCount: institutions.length },
+});
+writeJson(path.join(v1, "code-systems.json"), { data: codeSystemsList });
 // Unwrapped, unlike every other file here: standard OpenAPI tooling
 // expects the spec document itself at the path, not nested under "data".
 writeJson(path.join(v1, "openapi.json"), openApiSpec);
 
-for (const r of records) {
-  writeJson(path.join(v1, "codes", `${r.swiftCode}.json`), { data: r });
+for (const inst of institutions) {
+  const body = { data: inst };
+  if (inst.codes.SWIFT) writeJson(path.join(v1, "institutions", `${inst.codes.SWIFT}.json`), body);
+  if (inst.codes.NRB) writeJson(path.join(v1, "institutions", `${inst.codes.NRB}.json`), body);
 }
 
-const byCountry = new Map();
-for (const r of records) {
-  if (!byCountry.has(r.countryCode)) byCountry.set(r.countryCode, []);
-  byCountry.get(r.countryCode).push(r);
-}
-
-// Country-specific domestic institution directories (NRB codes for
-// Nepal, not SWIFT/BIC). Currently just Nepal.
-const institutionsByCountry = new Map([["NP", institutionsNp]]);
-
-// One row per bank: institutions carry their own swiftCode when a
-// hand-verified crosswalk set one, so this only has to add the SWIFT
-// records no institution has already claimed.
-const toUnified = (country) => {
-  const domestic = institutionsByCountry.get(country) || [];
-  const claimedSwiftCodes = new Set(domestic.map((i) => i.swiftCode).filter(Boolean));
-
-  const fromInstitutions = domestic.map((i) => ({
-    name: i.name,
-    countryCode: i.countryCode,
-    institutionCode: i.institutionCode,
-    swiftCode: i.swiftCode || null,
-    class: i.class,
-  }));
-
-  const orphanSwift = (byCountry.get(country) || [])
-    .filter((r) => !claimedSwiftCodes.has(r.swiftCode))
-    .map((r) => ({
-      name: r.bank,
-      countryCode: r.countryCode,
-      institutionCode: null,
-      swiftCode: r.swiftCode,
-      class: null,
-    }));
-
-  return [...fromInstitutions, ...orphanSwift];
-};
-
-const allCountryCodes = new Set([...byCountry.keys(), ...institutionsByCountry.keys()]);
 const countryList = [];
-for (const code of allCountryCodes) {
-  const banks = byCountry.get(code) || [];
-  const name = banks[0]?.country ?? code;
-  const total = banks.length;
+for (const [code, insts] of byCountry) {
+  const systems = new Set();
+  for (const inst of insts) for (const s of Object.keys(inst.codes)) systems.add(s);
+  const entry = { code, name: countryNames.get(code) || code, institutionCount: insts.length, codeSystems: [...systems].sort() };
   fs.mkdirSync(path.join(v1, "countries", code), { recursive: true });
-  writeJson(path.join(v1, "countries", `${code}.json`), {
-    data: { code, name, bankCount: total, hasInstitutionDirectory: institutionsByCountry.has(code) },
+  writeJson(path.join(v1, "countries", `${code}.json`), { data: entry });
+  writeJson(path.join(v1, "countries", code, "institutions.json"), {
+    data: insts,
+    pagination: { total: insts.length, limit: insts.length, offset: 0, hasMore: false },
   });
-  if (banks.length > 0) {
-    writeJson(path.join(v1, "countries", code, "codes.json"), {
-      data: banks,
-      pagination: { total, limit: total, offset: 0, hasMore: false },
-    });
-  }
-  const unified = toUnified(code);
-  writeJson(path.join(v1, "countries", code, "banks.json"), {
-    data: unified,
-    pagination: { total: unified.length, limit: unified.length, offset: 0, hasMore: false },
-  });
-  countryList.push({ code, name, bankCount: total, hasInstitutionDirectory: institutionsByCountry.has(code) });
+  countryList.push(entry);
 }
 countryList.sort((a, b) => a.code.localeCompare(b.code));
 writeJson(path.join(v1, "countries.json"), { data: countryList });
-
-for (const inst of institutionsNp) {
-  writeJson(path.join(v1, "institutions", `${inst.institutionCode}.json`), { data: inst });
-}
-writeJson(path.join(v1, "countries", "NP", "institutions.json"), {
-  data: institutionsNp,
-  pagination: { total: institutionsNp.length, limit: institutionsNp.length, offset: 0, hasMore: false },
-});
 
 fs.writeFileSync(
   path.join(outDir, "index.html"),
@@ -130,33 +116,25 @@ fs.writeFileSync(
   footer{margin-top:3rem;color:#666;font-size:.9em}
 </style>
 <h1>swiftlookup</h1>
-<p>Static mirror. SWIFT/BIC code &rarr; bank name + country. ${records.length.toLocaleString()} records, ${countryList.length} countries. No query params &mdash; every path is a real file.</p>
+<p>Static mirror. Look up a bank by any code it holds &mdash; SWIFT/BIC
+or a national registry like Nepal Rastra Bank's &mdash; without caring
+which. ${institutions.length.toLocaleString()} institutions, ${countryList.length} countries.
+No query params here &mdash; every path is a real file; for search, fetch
+<code>dump.json</code> once and filter client-side.</p>
 <table>
-<tr><td><code>GET /v1/countries/&lt;CC&gt;/banks.json</code></td><td><b>Every bank in a country</b>, e.g. <a href="v1/countries/NP/banks.json">v1/countries/NP/banks.json</a> &mdash; SWIFT + domestic combined</td></tr>
-<tr><td><code>GET /v1/codes/&lt;CODE&gt;.json</code></td><td>e.g. <a href="v1/codes/DEUTDE.json">v1/codes/DEUTDE.json</a></td></tr>
-<tr><td><code>GET /v1/countries/&lt;CC&gt;/codes.json</code></td><td>SWIFT codes only, e.g. <a href="v1/countries/NP/codes.json">v1/countries/NP/codes.json</a></td></tr>
+<tr><td><code>GET /v1/institutions/&lt;CODE&gt;.json</code></td><td>e.g. <a href="v1/institutions/DEUTDE.json">v1/institutions/DEUTDE.json</a></td></tr>
+<tr><td><code>GET /v1/countries/&lt;CC&gt;/institutions.json</code></td><td>e.g. <a href="v1/countries/NP/institutions.json">v1/countries/NP/institutions.json</a></td></tr>
 <tr><td><code>GET /v1/countries/&lt;CC&gt;.json</code></td><td>e.g. <a href="v1/countries/NP.json">v1/countries/NP.json</a></td></tr>
 <tr><td><code>GET /v1/countries.json</code></td><td>all ${countryList.length} countries</td></tr>
-<tr><td><code>GET /v1/dump.json</code></td><td>all ${records.length} SWIFT/BIC records</td></tr>
+<tr><td><code>GET /v1/code-systems.json</code></td><td>what code systems exist</td></tr>
+<tr><td><code>GET /v1/dump.json</code></td><td>all ${institutions.length} institutions</td></tr>
 <tr><td><code>GET /v1/meta.json</code></td><td>dataset info</td></tr>
 <tr><td><code>GET /v1/openapi.json</code></td><td>machine-readable <a href="https://www.openapis.org/">OpenAPI 3.1</a> spec</td></tr>
 </table>
-<p>Nepal only, separate from SWIFT &mdash; Nepal Rastra Bank's own institution codes, all 4 BFI classes (${institutionsNp.length} banks/finance companies/microfinance):</p>
-<table>
-<tr><td><code>GET /v1/institutions/&lt;CODE&gt;.json</code></td><td>e.g. <a href="v1/institutions/NP11001.json">v1/institutions/NP11001.json</a></td></tr>
-<tr><td><code>GET /v1/countries/NP/institutions.json</code></td><td>all ${institutionsNp.length} Nepal institutions</td></tr>
-</table>
-<p>SWIFT/BIC and NRB codes are different identifier systems. The combined
-<code>banks.json</code> returns one row per bank &mdash;
-<code>{ name, institutionCode, swiftCode, class }</code>, either code
-field <code>null</code> when that bank has none in that system. A
-hand-verified crosswalk (not name-matching) is what makes this exact.</p>
 <footer>
-  By <a href="https://github.com/alphaseneca">alphaseneca</a>.
-  Data: <a href="https://github.com/lobax/banknames">lobax/banknames</a>, from the ISO 9362 Registration Authority's public BIC directory.
-  <a href="https://github.com/alphaseneca/swift-lookup">Source</a>.
+  <a href="https://github.com/alphaseneca/swift-lookup">Source, data provenance, and license</a>.
 </footer>
 `
 );
 
-console.log(`${records.length} code files, ${countryList.length} country files -> ${outDir}`);
+console.log(`${institutions.length} institutions, ${countryList.length} countries -> ${outDir}`);
